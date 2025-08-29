@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.bright_data.metadata]
+type = "agent"
+
+[project]
+name = "bright_data"
+version = "0.1.0"
+authors = [
+  { name="Jamieson Walker", email="jamieson.walker@solace.com" },
+]
+description = "An agent to discover, access, extract and interact with any public website via brighdata"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "solace_agent_mesh~=1.0.6",
+    # Add plugin-specific dependencies here
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bright_data"]
+src-path = "src"
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/bright_data" = "bright_data/"
+"config.yaml" = "bright_data/config.yaml"
+"README.md" = "bright_data/README.md"
+"pyproject.toml" = "bright_data/pyproject.toml"
