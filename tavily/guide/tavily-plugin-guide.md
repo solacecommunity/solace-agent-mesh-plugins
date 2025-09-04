@@ -68,40 +68,46 @@ Before using this plugin, you need:
 
 ## Installation and Setup
 
-### Step 1: Install the Plugin
+### Step 1: Add the Community Plugin Repository
 
-1. Navigate to your SAM plugin directory
-2. Clone or download the tavily plugin from the community repository:
-   ```bash
-   git clone https://github.com/solacecommunity/solace-agent-mesh-plugins.git
-   cd solace-agent-mesh-plugins/tavily
+1. Run `sam plugin catalog` from your python virtual environment and inside your SAM directory.
+2. Add the Solace Community Plugin repository:
+   ![SAM Community Plugin Repository add](./assets/samCommunityRepoAdd.png)
+   ```bash 
+   https://github.com/solacecommunity/solace-agent-mesh-plugins
    ```
+   
+   ![SAM Community Plugin Repository](./assets/samCommunityRepo.png)
 
-### Step 2: Configure Environment Variables
+### Step 2: Install the Plugin in SAM
+
+Use SAM's plugin installation mechanism to install the Bright Data plugin with the gui or the CLI:
+
+*GUI* 
+
+![Tavily Install Gui](./assets/samTavilyInstall.png)
+
+*CLI*
+```bash
+sam plugin add tavily --plugin tavily
+```
+### Step 3: Configure Environment Variables
 
 Set up your Tavily API credentials as environment variables:
 
 ```bash
-export TAVILY_API_KEY="your_api_key_here"
+export TAVILY_TOKEN="your_api_key_here"
 ```
-
-### Step 3: Install the Plugin in SAM
-
-Use SAM's plugin installation mechanism to install the Tavily plugin:
-
-```bash
-sam plugin install tavily
-```
-
 ### Step 4: Verify Installation
 
 Check that the plugin is properly installed and recognized by SAM:
 
 ```bash
-sam agent list
+sam run
 ```
 
-You should see the `tavily` agent in the list of available agents.
+Select agent page. You should see `tavily` agent in the list of available agents.
+![Tavily Installed](./assets/samTavilyInstalled.png)
 
 ## Usage Examples
 

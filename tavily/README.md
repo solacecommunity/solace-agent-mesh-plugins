@@ -2,7 +2,20 @@
 
 An agent for searching the web with tavily ai
 
+[https://www.tavily.com/](https://www.tavily.com/)
+
 This is a plugin for the Solace Agent Mesh (SAM).
+
+## Usage
+1. Launch SAM plugin catalog `sam plugin catalog` 
+2. Add this repository to your SAM instance if you have not done so already.  `+ Add Registry`, paste in the git repository [https://github.com/solacecommunity/solace-agent-mesh-plugins](https://github.com/solacecommunity/solace-agent-mesh-plugins) with name `Community`
+3. Install the Tavily agent using the install button in the gui or with `sam plugin add tavily --plugin tavily`
+4. Supply your Tavily mcp server token as `export TAVILY_TOKEN="your_api_key_here"`
+
+You will need a Tavily token from a [free trial](https://www.tavily.com/)
+
+To use the Tavily agent in SAM you will have to ask the orchestrator to find some information on the web and do something with it. 
+
 
 ## Configuration (`config.yaml`)
 
@@ -12,23 +25,3 @@ The `config.yaml` in this plugin serves as a template. When you use `sam plugin 
 - `__COMPONENT_PASCAL_CASE_NAME__`
 
 Customize the `config.yaml` in this plugin directory to define the base configuration for components created from it.
-
-## Source Code (`src/`)
-The `src/` directory contains the Python source code for your plugin.
-
-## Installation (as a developer of this plugin)
-
-To build and install this plugin locally for testing:
-```bash
-sam plugin build
-pip install dist/*.whl 
-```
-(Or `pip install .` if preferred, `sam plugin build` is for creating the distributable wheel)
-
-## Usage (as a user of this plugin)
-
-Once the plugin is installed (e.g., from PyPI or a local wheel file):
-```bash
-sam plugin add <your-new-component-name> --plugin tavily
-```
-This will create a new component configuration at `configs/plugins/<your-new-component-name-kebab-case>.yaml`.
