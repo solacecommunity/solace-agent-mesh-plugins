@@ -1,0 +1,197 @@
+# Plugin Metadata:
+# Name: find-my-ip
+# Version: 0.1.0
+# Description: The Find My IP Agent tells you your current IP address and where it's located. It can also provide location, lat/long and security information and connection details for any IP address you want to check.
+# Author: Giri Venkatesan <giri.venkatesan@solace.com>
+# 
+# --- Start of Agent Configuration Template ---
+# Solace Agent Mesh: Plugin Configuration Template
+#
+# This file serves as a template for creating new agent configurations from this plugin.
+# Use placeholders like __COMPONENT_KEBAB_CASE_NAME__, __COMPONENT_PASCAL_CASE_NAME__,
+# and __COMPONENT_UPPER_SNAKE_CASE_NAME__ where the specific component name should be inserted.
+
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: __COMPONENT_KEBAB_CASE_NAME__.log
+
+# To use the `shared_config.yaml` file, uncomment the following line and remove the `shared_config` section below.
+# !include ../shared_config.yaml
+shared_config:
+  - broker_connection: &broker_connection
+      dev_mode: ${SOLACE_DEV_MODE, false}
+      broker_url: ${SOLACE_BROKER_URL, ws://localhost:8080}
+      broker_username: ${SOLACE_BROKER_USERNAME, default}
+      broker_password: ${SOLACE_BROKER_PASSWORD, default}
+      broker_vpn: ${SOLACE_BROKER_VPN, default}
+      temporary_queue: ${USE_TEMPORARY_QUEUES, true}
+
+  - models:
+    general: &general_model
+      # This dictionary structure tells ADK to use the LiteLlm wrapper.
+      # 'model' uses the specific model identifier your endpoint expects.
+      model: ${LLM_SERVICE_GENERAL_MODEL_NAME} # Use env var for model name
+      # 'api_base' tells LiteLLM where to send the request.
+      api_base: ${LLM_SERVICE_ENDPOINT} # Use env var for endpoint URL
+      # 'api_key' provides authentication.
+      api_key: ${LLM_SERVICE_API_KEY} # Use env var for API key
+
+  - services:
+    # Default session service configuration
+    session_service: &default_session_service
+      type: "memory"
+      default_behavior: "PERSISTENT"
+    
+    # Default artifact service configuration
+    artifact_service: &default_artifact_service
+      type: "filesystem"
+      base_path: "/tmp/samv2"
+      artifact_scope: namespace # Or "namespace", "app", "custom"
+
+apps:
+  - name: __COMPONENT_KEBAB_CASE_NAME__-app
+    app_base_path: . 
+    app_module: solace_agent_mesh.agent.sac.app 
+    broker:
+      <<: *broker_connection
+
+    # App Level Config
+    app_config:
+      namespace: "${NAMESPACE}" 
+      supports_streaming: false 
+      agent_name: "__COMPONENT_PASCAL_CASE_NAME__" 
+      display_name: "__COMPONENT_PASCAL_CASE_NAME__"
+      model: *general_model 
+
+      instruction: |
+        You are a specialized IP address information agent that helps users understand their current network location and connection details. Your primary capabilities include:
+
+        Core Functions:
+        - Provide current location (city, country, region, coordinates) from IP
+        - Provide user's current public IP address from reliable APIs
+        - Provide detailed location information (country, city, region, coordinates) for any IP address
+        - Analyze IP addresses for security characteristics (proxy detection, VPN identification, TOR usage, crawler detection)
+        - Supply comprehensive connection details and network information
+
+        Use Cases You Handle:
+        - "What's my current IP address?" - Get the user's public IP
+        - "Where am I located?" - Provide location based on IP geolocation
+        - "Is my connection secure?" - Analyze IP for security characteristics
+        - "What are my connection details?" - Provide comprehensive network information
+        - Location-based queries that require IP geolocation data
+
+        How to Respond:
+        - Provide clear, accurate information about IP addresses and locations
+        - If analyzing security characteristics, explain what each detection means
+        - For location queries, provide both human-readable location and technical details (coordinates, ISP, etc.)
+        - Use the most appropriate tool for the user's specific request
+
+        **Important Notes:**
+        - You can analyze any IP address, not just the user's current one
+        - Always prioritize accuracy and provide context for technical information
+        - If a tool fails, try alternative approaches or explain the limitation
+
+        Always provide clear, accurate information and explain what each tool does when used.
+
+      # Lifecycle functions
+      agent_init_function:
+        module: "find_my_ip.lifecycle"
+        name: "initialize_find_my_ip"
+        base_path: .
+        config:
+          startup_message: "Find My IP Agent is ready to provide IP & IP based location, security, and connection information!"
+
+      agent_cleanup_function:
+        module: "find_my_ip.lifecycle"
+        base_path: .
+        name: "cleanup_find_my_ip"
+
+      tools:
+        - group_name: artifact_management
+          tool_type: builtin-group
+
+        # Find My IP Tools (defined in tools.py)
+        - tool_type: python
+          component_module: "find_my_ip.tools"
+          function_name: get_current_ip
+          tool_description: "Get current IP address"
+          tool_config: {}
+
+        - tool_type: python
+          component_module: "find_my_ip.tools"
+          function_name: get_ip_with_retry
+          tool_description: "Get current IP address with retry"
+          tool_config: {}
+
+        - tool_type: python
+          component_module: "find_my_ip.tools"
+          function_name: get_ip_info
+          tool_description: "Get current IP address with location"
+          tool_config: {}
+
+        - tool_type: python
+          component_module: "find_my_ip.tools"
+          function_name: get_ip_comprehensive_info
+          tool_description: "Get comprehensive IP information including security, connection, and location data"
+          tool_config: {}
+
+        - tool_type: python
+          component_module: "find_my_ip.tools"
+          function_name: get_ip_security_info
+          tool_description: "Analyze IP address for security characteristics including proxy, VPN, TOR, and crawler detection"
+          tool_config: {}
+
+        - tool_type: python
+          component_module: "find_my_ip.tools"
+          function_name: get_ip_location
+          tool_description: "Get detailed location information for a given IP address using multiple APIs"
+          tool_config: {}
+
+      session_service: *default_session_service
+      artifact_service: *default_artifact_service
+
+      artifact_handling_mode: "reference"
+      enable_embed_resolution: true
+      enable_artifact_content_instruction: true
+
+      agent_card:
+        description: Expert IP address information agent specializing in network location services. Retrieves currentor any public IP addresses, provides detailed geolocation data (country, city, coordinates), analyzes security characteristics including proxy/VPN/TOR detection, and supplies comprehensive connection details. Ideal for location-based queries, network security assessments, and understanding the network environment.
+        defaultInputModes: ["text"]
+        defaultOutputModes: ["text", "file"]
+        skills:
+          - id: "get_current_ip"
+            name: "Get Current IP"
+            description: "Retrieves your current public IP address from reliable APIs."
+          
+          - id: "get_ip_with_retry"
+            name: "Get IP with Retry"
+            description: "Gets current IP address with retry logic for improved reliability."
+          
+          - id: "get_ip_info"
+            name: "Get IP Information"
+            description: "Retrieves IP address with location information."
+          
+          - id: "get_ip_comprehensive_info"
+            name: "Get Comprehensive IP Info"
+            description: "Provides comprehensive IP information including security, connection, and location data."
+          
+          - id: "get_ip_security_info"
+            name: "Get IP Security Info"
+            description: "Analyzes IP address for security characteristics including proxy, VPN, TOR, and crawler detection."
+          
+          - id: "get_ip_location"
+            name: "Get IP Location"
+            description: "Retrieves detailed location information for a given IP address."
+
+      agent_card_publishing: { interval_seconds: 10 }
+      agent_discovery: { enabled: false }
+      inter_agent_communication:
+        allow_list: []
+        request_timeout_seconds: 30
+      
+      # Standard SAM configuration
+      max_conversation_turns: 100
+      conversation_timeout_seconds: 3600
+      enable_tool_calling: true
+      enable_artifact_creation: true
