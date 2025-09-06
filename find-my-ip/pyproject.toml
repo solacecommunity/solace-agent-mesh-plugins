@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.find_my_ip.metadata]
+type = "agent"
+
+[project]
+name = "find_my_ip"
+version = "0.1.0"
+authors = [
+  { name="Giri Venkatesan", email="giri.venkatesan@solace.com" },
+]
+description = "The Find My IP Agent tells you your current IP address and where it's located. It can also provide location, lat/long and security information and connection details for any IP address you want to check."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.24.0"
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0"
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = ["-v", "--tb=short"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/find_my_ip"]
+src-path = "src"
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/find_my_ip" = "find_my_ip/"
+"config.yaml" = "find_my_ip/config.yaml"
+"README.md" = "find_my_ip/README.md"
+"pyproject.toml" = "find_my_ip/pyproject.toml"
