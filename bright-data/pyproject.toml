@@ -18,7 +18,7 @@ description = "An agent to discover, access, extract and interact with any publi
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "solace_agent_mesh~=1.1.0",
+    "solace_agent_mesh>=1.0.6",
     # Add plugin-specific dependencies here
 ]
 
