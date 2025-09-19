@@ -64,8 +64,8 @@ apps:
       model: *general_model 
 
       instruction: |
-        You are a helpful AI assistant for searching the web named TavilyAgent
-      
+        You are a helpful AI assistant for searching the web named Tavily Agent.
+        Use your tools to search the web, analyze the results, and provide an answer to the user.
       tools:
         - tool_type: mcp
           # connection_params:
