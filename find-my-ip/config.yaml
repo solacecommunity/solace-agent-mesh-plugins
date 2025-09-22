@@ -156,7 +156,7 @@ apps:
       enable_artifact_content_instruction: true
 
       agent_card:
-        description: Expert IP address information agent specializing in network location services. Retrieves currentor any public IP addresses, provides detailed geolocation data (country, city, coordinates), analyzes security characteristics including proxy/VPN/TOR detection, and supplies comprehensive connection details. Ideal for location-based queries, network security assessments, and understanding the network environment.
+        description: Expert IP address information agent specializing in network location services. Retrieves current or any public IP addresses, provides detailed geolocation data (country, city, coordinates), analyzes security characteristics including proxy/VPN/TOR detection, and supplies comprehensive connection details. Ideal for location-based queries, network security assessments, and understanding the network environment.
         defaultInputModes: ["text"]
         defaultOutputModes: ["text", "file"]
         skills:
