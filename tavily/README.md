@@ -17,11 +17,3 @@ You will need a Tavily token from a [free trial](https://www.tavily.com/)
 To use the Tavily agent in SAM you will have to ask the orchestrator to find some information on the web and do something with it. 
 
 
-## Configuration (`config.yaml`)
-
-The `config.yaml` in this plugin serves as a template. When you use `sam plugin add <component_name> --plugin tavily`, the following placeholders in the YAML structure will be replaced with variations of `<component_name>`:
-- `__COMPONENT_UPPER_SNAKE_CASE_NAME__`
-- `__COMPONENT_KEBAB_CASE_NAME__`
-- `__COMPONENT_PASCAL_CASE_NAME__`
-
-Customize the `config.yaml` in this plugin directory to define the base configuration for components created from it.

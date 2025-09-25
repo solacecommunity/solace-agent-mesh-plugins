@@ -17,10 +17,7 @@ authors = [
 description = "An agent for searching the web with tavily ai"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = [
-    "solace_agent_mesh~=1.0.6",
-    # Add plugin-specific dependencies here
-]
+dependencies = []
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tavily"]
