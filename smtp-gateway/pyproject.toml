@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.smtp_gateway.metadata]
+type = "agent"
+
+[project]
+name = "smtp_gateway"
+version = "0.1.0"
+authors = [
+  { name="Solace Community", email="community@solace.com" },
+]
+description = "SMTP Gateway Agent for sending and receiving emails with attachments through SMTP/IMAP protocols."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "aiosmtplib==3.0.2",
+    "aioimaplib==1.1.0",
+    "aiofiles==24.1.0",
+    "python-magic==0.4.27",
+    "email-validator==2.2.0"
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/smtp_gateway"]
+src-path = "src"
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/smtp_gateway" = "smtp_gateway/"
+"config.yaml" = "smtp_gateway/config.yaml"
+"README.md" = "smtp_gateway/README.md"
+"pyproject.toml" = "smtp_gateway/pyproject.toml"

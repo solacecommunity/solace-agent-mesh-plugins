@@ -1,0 +1,242 @@
+# Plugin Metadata:
+# Name: smtp-gateway
+# Version: 0.1.0
+# Description: SMTP Gateway Agent for sending and receiving emails with attachments through SMTP/IMAP protocols.
+# Author: Solace Community
+# 
+# --- Start of Agent Configuration Template ---
+# Solace Agent Mesh: Plugin Configuration Template
+#
+# This file serves as a template for creating new agent configurations from this plugin.
+# Use placeholders like __COMPONENT_KEBAB_CASE_NAME__, __COMPONENT_PASCAL_CASE_NAME__,
+# and __COMPONENT_UPPER_SNAKE_CASE_NAME__ where the specific component name should be inserted.
+
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: __COMPONENT_KEBAB_CASE_NAME__.log
+
+# To use the `shared_config.yaml` file, uncomment the following line and remove the `shared_config` section below.
+# !include ../shared_config.yaml
+shared_config:
+  - broker_connection: &broker_connection
+      dev_mode: ${SOLACE_DEV_MODE, false}
+      broker_url: ${SOLACE_BROKER_URL, ws://localhost:8080}
+      broker_username: ${SOLACE_BROKER_USERNAME, default}
+      broker_password: ${SOLACE_BROKER_PASSWORD, default}
+      broker_vpn: ${SOLACE_BROKER_VPN, default}
+      temporary_queue: ${USE_TEMPORARY_QUEUES, true}
+
+  - models:
+    general: &general_model
+      # This dictionary structure tells ADK to use the LiteLlm wrapper.
+      # 'model' uses the specific model identifier your endpoint expects.
+      model: ${LLM_SERVICE_GENERAL_MODEL_NAME} # Use env var for model name
+      # 'api_base' tells LiteLLM where to send the request.
+      api_base: ${LLM_SERVICE_ENDPOINT} # Use env var for endpoint URL
+      # 'api_key' provides authentication.
+      api_key: ${LLM_SERVICE_API_KEY} # Use env var for API key
+
+  - services:
+    # Default session service configuration
+    session_service: &default_session_service
+      type: "memory"
+      default_behavior: "PERSISTENT"
+    
+    # Default artifact service configuration
+    artifact_service: &default_artifact_service
+      type: "filesystem"
+      base_path: "/tmp/samv2"
+      artifact_scope: namespace # Or "namespace", "app", "custom"
+
+apps:
+  - name: __COMPONENT_KEBAB_CASE_NAME__-app
+    app_base_path: . 
+    app_module: solace_agent_mesh.agent.sac.app 
+    broker:
+      <<: *broker_connection
+
+    # App Level Config
+    app_config:
+      namespace: ${NAMESPACE} 
+      supports_streaming: true 
+      agent_name: "__COMPONENT_PASCAL_CASE_NAME__" 
+      display_name: "__COMPONENT_SPACED_CAPITALIZED_NAME__ Agent"
+      model: *general_model 
+
+      instruction: |
+        You are an SMTP Gateway agent that provides comprehensive email management capabilities. You can send and receive emails with attachments, manage email folders, and perform various email operations.
+
+        Your capabilities include:
+        - Sending emails with HTML/plain text content and file attachments
+        - Receiving and reading emails from IMAP servers
+        - Downloading email attachments
+        - Managing emails (mark as read/unread, delete, move between folders)
+        - Listing available email folders
+
+        When handling emails:
+        - Always validate email addresses before sending
+        - Check attachment sizes and types for security
+        - Use TLS/SSL for all connections
+        - Provide clear feedback on operation success/failure
+        - Handle errors gracefully and inform the user
+
+        Security considerations:
+        - All connections use TLS/SSL encryption
+        - Validate file types before processing attachments
+        - Enforce size limits on attachments (default: 25MB)
+        - Sanitize email content to prevent injection attacks
+
+        When the user asks to send an email, gather all necessary information (recipient, subject, content, attachments) before calling the send_email tool. If the user wants to check for new emails, use the receive_emails tool with appropriate filters.
+
+      # Lifecycle functions
+      agent_init_function:
+        module: "smtp_gateway.lifecycle"
+        name: "initialize_smtp_gateway"
+        base_path: .
+        config:
+          startup_message: "SMTP Gateway Agent is ready to send and receive emails!"
+          max_attachment_size_mb: 25
+          allowed_attachment_types: ["pdf", "doc", "docx", "txt", "jpg", "jpeg", "png", "gif", "zip"]
+
+      agent_cleanup_function:
+        module: "smtp_gateway.lifecycle"
+        base_path: .
+        name: "cleanup_smtp_gateway"
+
+      tools:
+        - group_name: artifact_management
+          tool_type: builtin-group
+
+        # SMTP Gateway Tools
+        - tool_type: python
+          component_module: "smtp_gateway.tools"
+          function_name: send_email
+          tool_description: "Send an email with optional attachments via SMTP"
+          tool_config:
+            smtp_host: ${SMTP_HOST}
+            smtp_port: ${SMTP_PORT, 587}
+            smtp_username: ${SMTP_USERNAME}
+            smtp_password: ${SMTP_PASSWORD}
+            smtp_use_tls: ${SMTP_USE_TLS, true}
+            max_attachment_size_mb: 25
+            allowed_attachment_types: ["pdf", "doc", "docx", "txt", "jpg", "jpeg", "png", "gif", "zip", "csv", "xlsx", "ppt", "pptx"]
+
+        - tool_type: python
+          component_module: "smtp_gateway.tools"
+          function_name: receive_emails
+          tool_description: "Retrieve emails from IMAP server with optional filters"
+          tool_config:
+            imap_host: ${IMAP_HOST}
+            imap_port: ${IMAP_PORT, 993}
+            imap_username: ${IMAP_USERNAME}
+            imap_password: ${IMAP_PASSWORD}
+            imap_use_ssl: ${IMAP_USE_SSL, true}
+
+        - tool_type: python
+          component_module: "smtp_gateway.tools"
+          function_name: download_attachment
+          tool_description: "Download a specific attachment from an email"
+          tool_config:
+            imap_host: ${IMAP_HOST}
+            imap_port: ${IMAP_PORT, 993}
+            imap_username: ${IMAP_USERNAME}
+            imap_password: ${IMAP_PASSWORD}
+            imap_use_ssl: ${IMAP_USE_SSL, true}
+            download_path: ${ATTACHMENT_DOWNLOAD_PATH, /tmp/email_attachments}
+
+        - tool_type: python
+          component_module: "smtp_gateway.tools"
+          function_name: mark_email_read
+          tool_description: "Mark an email as read or unread"
+          tool_config:
+            imap_host: ${IMAP_HOST}
+            imap_port: ${IMAP_PORT, 993}
+            imap_username: ${IMAP_USERNAME}
+            imap_password: ${IMAP_PASSWORD}
+            imap_use_ssl: ${IMAP_USE_SSL, true}
+
+        - tool_type: python
+          component_module: "smtp_gateway.tools"
+          function_name: delete_email
+          tool_description: "Delete an email from the server"
+          tool_config:
+            imap_host: ${IMAP_HOST}
+            imap_port: ${IMAP_PORT, 993}
+            imap_username: ${IMAP_USERNAME}
+            imap_password: ${IMAP_PASSWORD}
+            imap_use_ssl: ${IMAP_USE_SSL, true}
+
+        - tool_type: python
+          component_module: "smtp_gateway.tools"
+          function_name: move_email
+          tool_description: "Move an email to a different folder"
+          tool_config:
+            imap_host: ${IMAP_HOST}
+            imap_port: ${IMAP_PORT, 993}
+            imap_username: ${IMAP_USERNAME}
+            imap_password: ${IMAP_PASSWORD}
+            imap_use_ssl: ${IMAP_USE_SSL, true}
+
+        - tool_type: python
+          component_module: "smtp_gateway.tools"
+          function_name: list_folders
+          tool_description: "List all available IMAP folders"
+          tool_config:
+            imap_host: ${IMAP_HOST}
+            imap_port: ${IMAP_PORT, 993}
+            imap_username: ${IMAP_USERNAME}
+            imap_password: ${IMAP_PASSWORD}
+            imap_use_ssl: ${IMAP_USE_SSL, true}
+
+      session_service: *default_session_service
+      artifact_service: *default_artifact_service
+
+      artifact_handling_mode: "reference"
+      enable_embed_resolution: true
+      enable_artifact_content_instruction: true
+
+      agent_card:
+        description: "SMTP Gateway Agent for comprehensive email management. Send and receive emails with attachments, manage folders, and perform email operations securely via SMTP/IMAP protocols."
+        defaultInputModes: ["text", "file"]
+        defaultOutputModes: ["text", "file"]
+        skills:
+          - id: "send_email"
+            name: "Send Email"
+            description: "Send an email with optional attachments via SMTP."
+          
+          - id: "receive_emails"
+            name: "Receive Emails"
+            description: "Retrieve emails from IMAP server with filters."
+          
+          - id: "download_attachment"
+            name: "Download Attachment"
+            description: "Download a specific attachment from an email."
+          
+          - id: "mark_email_read"
+            name: "Mark Email Read/Unread"
+            description: "Mark an email as read or unread."
+          
+          - id: "delete_email"
+            name: "Delete Email"
+            description: "Delete an email from the server."
+          
+          - id: "move_email"
+            name: "Move Email"
+            description: "Move an email to a different folder."
+          
+          - id: "list_folders"
+            name: "List Folders"
+            description: "List all available IMAP folders."
+
+      agent_card_publishing: { interval_seconds: 10 }
+      agent_discovery: { enabled: false }
+      inter_agent_communication:
+        allow_list: []
+        request_timeout_seconds: 30
+      
+      # Standard SAM configuration
+      max_conversation_turns: 100
+      conversation_timeout_seconds: 3600
+      enable_tool_calling: true
+      enable_artifact_creation: true
