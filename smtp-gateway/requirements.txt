@@ -1,0 +1,18 @@
+# SMTP Gateway Plugin Requirements
+# Install with: pip install -r requirements.txt
+
+# Core dependencies
+aiosmtplib==3.0.2
+aioimaplib==1.1.0
+aiofiles==24.1.0
+python-magic==0.4.27
+email-validator==2.2.0
+
+# Development dependencies (optional)
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.0.0
+
+# Optional: Enhanced HTML sanitization
+# Uncomment if you need more robust HTML sanitization
+# bleach>=6.0.0
