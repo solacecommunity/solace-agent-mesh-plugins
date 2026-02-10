@@ -128,10 +128,23 @@ This plugin utilizes standard email protocols and does not depend on specific ex
 
 - **Encryption**: All connections use TLS/SSL encryption by default
 - **Credential Storage**: Credentials are stored in environment variables only
-- **Email Validation**: All email addresses are validated before processing
+- **Email Validation**: All email addresses are validated before processing using email-validator library
 - **Attachment Limits**: Default 25MB size limit on attachments (configurable)
-- **File Type Detection**: Automatic MIME type detection for attachments
-- **Input Sanitization**: Email content is sanitized to prevent injection attacks
+- **File Type Validation**: Whitelist-based file extension validation for attachments
+- **Path Traversal Protection**: All file paths are sanitized and validated to prevent directory traversal attacks
+- **Filename Sanitization**: Attachment filenames are sanitized to remove dangerous characters
+- **HTML Sanitization**: HTML email content is sanitized to prevent XSS and script injection
+- **Subject Length Validation**: Email subjects are limited to RFC 5322 standards (998 characters)
+- **MIME Type Detection**: Automatic MIME type detection for safe attachment handling
+- **Input Sanitization**: All user inputs are validated and sanitized
+
+### Security Best Practices
+
+1. **Use App-Specific Passwords**: For services like Gmail, use app-specific passwords instead of your main account password
+2. **Limit Attachment Types**: Configure `allowed_attachment_types` to only include necessary file types
+3. **Monitor Usage**: Implement rate limiting at the infrastructure level to prevent abuse
+4. **Regular Updates**: Keep dependencies updated to patch security vulnerabilities
+5. **Audit Logs**: Review agent logs regularly for suspicious activity
 
 ## Limitations
 

@@ -120,6 +120,7 @@ apps:
             smtp_password: ${SMTP_PASSWORD}
             smtp_use_tls: ${SMTP_USE_TLS, true}
             max_attachment_size_mb: 25
+            allowed_attachment_types: ["pdf", "doc", "docx", "txt", "jpg", "jpeg", "png", "gif", "zip", "csv", "xlsx", "ppt", "pptx"]
 
         - tool_type: python
           component_module: "smtp_gateway.tools"

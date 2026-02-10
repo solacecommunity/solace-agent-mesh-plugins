@@ -7,6 +7,7 @@ This module contains all the tools for the SMTP Gateway Agent.
 import os
 import asyncio
 import mimetypes
+import re
 from typing import Any, Dict, Optional, List
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,6 +15,12 @@ import logging
 
 from email_validator import validate_email, EmailNotValidError
 import aiofiles
+
+try:
+    from google.adk.tools import ToolContext
+except ImportError:
+    # Fallback for testing or when ADK is not available
+    ToolContext = Any
 
 from smtp_gateway.services import SMTPService, IMAPService
 
@@ -66,6 +73,70 @@ def _get_mime_type(filename: str) -> str:
     """
     mime_type, _ = mimetypes.guess_type(filename)
     return mime_type or "application/octet-stream"
+
+
+def _sanitize_filename(filename: str) -> str:
+    """
+    Sanitize filename to prevent path traversal attacks.
+    
+    Args:
+        filename: Original filename
+        
+    Returns:
+        Sanitized filename
+    """
+    # Remove any path components
+    filename = os.path.basename(filename)
+    # Remove any non-alphanumeric characters except dots, dashes, and underscores
+    filename = re.sub(r'[^\w\s\-\.]', '', filename)
+    # Limit length
+    if len(filename) > 255:
+        name, ext = os.path.splitext(filename)
+        filename = name[:250] + ext
+    return filename
+
+
+def _validate_file_extension(filename: str, allowed_types: Optional[List[str]] = None) -> tuple[bool, str]:
+    """
+    Validate file extension against allowed types.
+    
+    Args:
+        filename: File name to validate
+        allowed_types: List of allowed extensions (without dot)
+        
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if not allowed_types:
+        return True, ""
+    
+    ext = os.path.splitext(filename)[1].lower().lstrip('.')
+    if ext not in allowed_types:
+        return False, f"File type '.{ext}' not allowed. Allowed types: {', '.join(allowed_types)}"
+    return True, ""
+
+
+def _sanitize_html_content(content: str, is_html: bool) -> str:
+    """
+    Sanitize email content to prevent injection attacks.
+    
+    Args:
+        content: Email content
+        is_html: Whether content is HTML
+        
+    Returns:
+        Sanitized content
+    """
+    if not is_html:
+        return content
+    
+    # Basic HTML sanitization - remove script tags and dangerous attributes
+    # For production, consider using a library like bleach
+    content = re.sub(r'<script[^>]*>.*?</script>', '', content, flags=re.DOTALL | re.IGNORECASE)
+    content = re.sub(r'on\w+\s*=\s*["\'].*?["\']', '', content, flags=re.IGNORECASE)
+    content = re.sub(r'javascript:', '', content, flags=re.IGNORECASE)
+    
+    return content
 
 
 async def send_email(
@@ -142,6 +213,17 @@ async def send_email(
             }
         from_email = result
         
+        # Sanitize email content
+        body = _sanitize_html_content(body, is_html)
+        
+        # Validate subject length
+        if len(subject) > 998:  # RFC 5322 limit
+            return {
+                "status": "error",
+                "message": "Subject line too long (max 998 characters)",
+                "error_type": "validation_error"
+            }
+        
         # Validate CC addresses
         if cc:
             validated_cc = []
@@ -173,14 +255,42 @@ async def send_email(
         # Process attachments
         attachments = []
         if attachment_paths:
+            # Get allowed file types from config
+            allowed_types = config.get("allowed_attachment_types", [
+                "pdf", "doc", "docx", "txt", "jpg", "jpeg", "png", "gif", "zip", "csv", "xlsx"
+            ])
+            
             for file_path in attachment_paths:
                 try:
+                    # Resolve absolute path to prevent path traversal
+                    file_path = os.path.abspath(file_path)
+                    
                     # Check if file exists
                     if not os.path.exists(file_path):
                         return {
                             "status": "error",
                             "message": f"Attachment file not found: {file_path}",
                             "error_type": "file_not_found"
+                        }
+                    
+                    # Check if it's actually a file (not a directory)
+                    if not os.path.isfile(file_path):
+                        return {
+                            "status": "error",
+                            "message": f"Path is not a file: {file_path}",
+                            "error_type": "invalid_file"
+                        }
+                    
+                    # Get and sanitize filename
+                    filename = _sanitize_filename(os.path.basename(file_path))
+                    
+                    # Validate file extension
+                    is_valid, error_msg = _validate_file_extension(filename, allowed_types)
+                    if not is_valid:
+                        return {
+                            "status": "error",
+                            "message": error_msg,
+                            "error_type": "invalid_file_type"
                         }
                     
                     # Check file size
@@ -197,8 +307,7 @@ async def send_email(
                     async with aiofiles.open(file_path, 'rb') as f:
                         content = await f.read()
                     
-                    # Get filename and MIME type
-                    filename = os.path.basename(file_path)
+                    # Get MIME type
                     mime_type = _get_mime_type(filename)
                     
                     attachments.append((filename, content, mime_type))
@@ -374,6 +483,9 @@ async def download_attachment(
                 "error_type": "configuration_error"
             }
         
+        # Sanitize and validate download path
+        download_path = os.path.abspath(download_path)
+        
         # Create download directory if it doesn't exist
         os.makedirs(download_path, exist_ok=True)
         
@@ -422,11 +534,33 @@ async def download_attachment(
                     if filename == attachment_filename:
                         attachment_found = True
                         
+                        # Sanitize filename to prevent path traversal
+                        safe_filename = _sanitize_filename(filename)
+                        
                         # Get attachment content
                         content = part.get_payload(decode=True)
                         
-                        # Save to file
-                        file_path = os.path.join(download_path, filename)
+                        # Validate content size
+                        max_size_mb = config.get("max_attachment_size_mb", 25)
+                        is_valid, error_msg = _validate_attachment_size(len(content), max_size_mb)
+                        if not is_valid:
+                            return {
+                                "status": "error",
+                                "message": error_msg,
+                                "error_type": "file_too_large"
+                            }
+                        
+                        # Save to file with sanitized name
+                        file_path = os.path.join(download_path, safe_filename)
+                        
+                        # Ensure the final path is still within download_path (prevent path traversal)
+                        if not os.path.abspath(file_path).startswith(os.path.abspath(download_path)):
+                            return {
+                                "status": "error",
+                                "message": "Invalid file path detected",
+                                "error_type": "security_error"
+                            }
+                        
                         async with aiofiles.open(file_path, 'wb') as f:
                             await f.write(content)
                         
@@ -436,7 +570,7 @@ async def download_attachment(
                             "status": "success",
                             "message": f"Attachment downloaded successfully",
                             "file_path": file_path,
-                            "filename": filename,
+                            "filename": safe_filename,
                             "size_bytes": len(content),
                             "timestamp": datetime.now(timezone.utc).isoformat()
                         }
