@@ -15,7 +15,7 @@ handlers:
     class: cli_entrypoint.logging_utils.MkdirRotatingFileHandler
     level: DEBUG
     formatter: standard
-    filename: logs/sam-cli-entrypoint.log
+    filename: cli-entrypoint.log
     maxBytes: 52428800  # 50 MB
     backupCount: 3
 

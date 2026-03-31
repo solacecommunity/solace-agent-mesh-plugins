@@ -29,6 +29,7 @@ src-path = "src"
 [tool.hatch.build.targets.wheel.force-include]
 "src/cli_entrypoint" = "cli_entrypoint/"
 "config.yaml" = "cli_entrypoint/config.yaml"
+"logging.yaml" = "cli_entrypoint/logging.yaml"
 "README.md" = "cli_entrypoint/README.md"
 "pyproject.toml" = "cli_entrypoint/pyproject.toml"
 
