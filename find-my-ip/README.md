@@ -160,7 +160,7 @@ pytest
 
 ## Original Author
 
-Created by the Solace Community
+Created by the Giri Venkatesan
 
 ## Contributing
 

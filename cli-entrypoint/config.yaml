@@ -1,0 +1,82 @@
+# Plugin Metadata:
+# Name: sam-cli-entrypoint-adapter
+# Version: 0.1.0
+# Description: Solace Agent Mesh CLI entrypoint adapter for terminal-based interaction
+# Author: SolaceLabs <solacelabs@solace.com>
+#
+# Required Environment Variables:
+# - NAMESPACE: Your SAM namespace (e.g., "my-org/dev")
+#
+# IMPORTANT: Run this entrypoint in its own `sam run` process. The CLI takes over
+# stdin and /quit shuts down the entire SAM process. Do not bundle with other
+# entrypoints in the same config file.
+
+log:
+  stdout_log_level: ERROR
+  log_file_level: ERROR
+  log_file: logs/sam-cli-entrypoint.log
+
+# To use the `shared_config.yaml` file, uncomment the following line and remove the `shared_config` section below.
+# !include ../shared_config.yaml
+
+shared_config:
+  - broker_connection: &broker_connection
+      dev_mode: ${SOLACE_DEV_MODE, false}
+      broker_url: ${SOLACE_BROKER_URL, ws://localhost:8008}
+      broker_username: ${SOLACE_BROKER_USERNAME, default}
+      broker_password: ${SOLACE_BROKER_PASSWORD, default}
+      broker_vpn: ${SOLACE_BROKER_VPN, default}
+      temporary_queue: ${USE_TEMPORARY_QUEUES, true}
+
+  - services:
+      artifact_service: &default_artifact_service
+        type: "filesystem"
+        base_path: "/tmp/samv2"
+        artifact_scope: namespace
+
+apps:
+  - name: sam_cli_entrypoint_app
+    app_module: sam_cli_entrypoint_adapter.app
+    broker:
+      <<: *broker_connection
+
+    app_config:
+      # --- Required ---
+      namespace: "${NAMESPACE}"
+
+      # --- CLI Adapter-Specific Config ---
+      adapter_config:
+        prompt: "sam> "
+        user_id: ${CLI_ENTRYPOINT_USER, cli_entrypoint_user}
+        show_status_updates: true
+
+      # --- Artifact Service ---
+      artifact_service: *default_artifact_service
+
+      # --- Entrypoint ID (must be unique per instance) ---
+      gateway_id: ${CLI_ENTRYPOINT_ID, sam-cli-ep-01}
+      default_agent_name: "OrchestratorAgent"
+
+      # --- Embed Resolution Config ---
+      enable_embed_resolution: true
+      gateway_max_artifact_resolve_size_bytes: 10000000
+      gateway_recursive_embed_depth: 3
+
+      # --- Authorization ---
+      authorization_service:
+        type: "none"
+
+      # --- System Purpose ---
+      system_purpose: >
+        The system is an AI Chatbot with agentic capabilities.
+        It will use the agents available to provide information,
+        reasoning and general assistance for the users in this system.
+        **Always return useful artifacts and files that you create to the user.**
+        Provide a status update before each tool call.
+        Your external name is Agent Mesh.
+
+      response_format: >
+        Responses should be clear, concise, and professionally toned.
+        Format responses to the user in plain text suitable for a terminal.
+        Avoid complex formatting like HTML or rich markdown tables.
+        Use simple bullet points and line breaks for readability.

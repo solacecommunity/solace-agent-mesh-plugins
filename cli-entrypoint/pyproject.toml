@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.sam_cli_entrypoint_adapter.metadata]
+type = "gateway"
+
+[project]
+name = "sam_cli_entrypoint_adapter"
+version = "0.1.0"
+authors = [
+  { name="SolaceLabs", email="solacelabs@solace.com" },
+]
+description = "Solace Agent Mesh CLI entrypoint adapter for terminal-based interaction"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "prompt_toolkit>=3.0.0",
+    "rich>=13.0.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sam_cli_entrypoint_adapter"]
+src-path = "src"
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/sam_cli_entrypoint_adapter" = "sam_cli_entrypoint_adapter/"
+"README.md" = "sam_cli_entrypoint_adapter/README.md"
+"pyproject.toml" = "sam_cli_entrypoint_adapter/pyproject.toml"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "--tb=short --strict-markers --disable-warnings -p pytest_asyncio"
+markers = []
