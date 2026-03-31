@@ -19,7 +19,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "prompt_toolkit>=3.0.0",
-    "rich>=13.0.0",
+    "rich>=13.0.0,<14.0.0",
 ]
 
 [tool.hatch.build.targets.wheel]
