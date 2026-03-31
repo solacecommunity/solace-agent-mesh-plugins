@@ -1,5 +1,5 @@
 # Plugin Metadata:
-# Name: sam-cli-entrypoint-adapter
+# Name: cli-entrypoint
 # Version: 0.1.0
 # Description: Solace Agent Mesh CLI entrypoint adapter for terminal-based interaction
 # Author: SolaceLabs <solacelabs@solace.com>
@@ -36,7 +36,7 @@ shared_config:
 
 apps:
   - name: sam_cli_entrypoint_app
-    app_module: sam_cli_entrypoint_adapter.app
+    app_module: cli_entrypoint.app
     broker:
       <<: *broker_connection
 

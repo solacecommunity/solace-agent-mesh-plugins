@@ -5,11 +5,11 @@ build-backend = "hatchling.build"
 [tool.hatch.metadata]
 allow-direct-references = true
 
-[tool.sam_cli_entrypoint_adapter.metadata]
+[tool.cli_entrypoint.metadata]
 type = "gateway"
 
 [project]
-name = "sam_cli_entrypoint_adapter"
+name = "cli_entrypoint"
 version = "0.1.0"
 authors = [
   { name="SolaceLabs", email="solacelabs@solace.com" },
@@ -23,13 +23,13 @@ dependencies = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/sam_cli_entrypoint_adapter"]
+packages = ["src/cli_entrypoint"]
 src-path = "src"
 
 [tool.hatch.build.targets.wheel.force-include]
-"src/sam_cli_entrypoint_adapter" = "sam_cli_entrypoint_adapter/"
-"README.md" = "sam_cli_entrypoint_adapter/README.md"
-"pyproject.toml" = "sam_cli_entrypoint_adapter/pyproject.toml"
+"src/cli_entrypoint" = "cli_entrypoint/"
+"README.md" = "cli_entrypoint/README.md"
+"pyproject.toml" = "cli_entrypoint/pyproject.toml"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -40,7 +40,7 @@ from a2a.types import (
     DataPart,
 )
 
-from sam_cli_entrypoint_adapter.session_store import SessionStore
+from cli_entrypoint.session_store import SessionStore
 
 # Max upload size: 50 MB
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024

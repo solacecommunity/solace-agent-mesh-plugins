@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 from solace_agent_mesh.gateway.base.app import BaseGatewayApp
 from solace_agent_mesh.gateway.base.component import BaseGatewayComponent
 
-from sam_cli_entrypoint_adapter.component import CliEntrypointComponent
+from cli_entrypoint.component import CliEntrypointComponent
 
 
 info = {
