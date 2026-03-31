@@ -6,6 +6,7 @@ Provides an interactive terminal REPL for conversing with SAM agents.
 
 import asyncio
 import base64
+import html as html_mod
 import logging
 import mimetypes
 import os
@@ -18,6 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from prompt_toolkit import PromptSession, prompt as pt_prompt
 from prompt_toolkit.completion import Completer, Completion
+from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.shortcuts import checkboxlist_dialog
 from prompt_toolkit.styles import Style as PTStyle
 from rich.console import Console
@@ -135,7 +137,7 @@ class CliEntrypointComponent(BaseGatewayComponent):
 
         # Read adapter config
         adapter_config = self.get_config("adapter_config", {})
-        self._prompt_str = adapter_config.get("prompt", "sam> ")
+        self._prompt_name = adapter_config.get("prompt_name", "sam")
         self._user_id = adapter_config.get("user_id", "cli_entrypoint_user")
         self._show_status_updates = adapter_config.get("show_status_updates", True)
         self._default_agent = self.get_config("default_agent_name", "OrchestratorAgent")
@@ -336,6 +338,16 @@ class CliEntrypointComponent(BaseGatewayComponent):
 
     # --- REPL Loop ---
 
+    def _build_prompt(self, session_id: str) -> HTML:
+        """Build the prompt with the current session label or short ID."""
+        meta = (self._session_store.get(session_id) or {}) if self._session_store else {}
+        label = meta.get("label")
+        if not label:
+            label = session_id.split("__")[-1] if "__" in session_id else session_id[-12:]
+        safe_name = html_mod.escape(self._prompt_name)
+        safe_label = html_mod.escape(label)
+        return HTML('<style fg="#00C895" bold="true">{}</style> [{}]&gt; '.format(safe_name, safe_label))
+
     async def _repl_loop(self) -> None:
         """Run the interactive read-eval-print loop."""
         session_id = self._session_store.active_session or self._default_session_id()
@@ -345,7 +357,6 @@ class CliEntrypointComponent(BaseGatewayComponent):
         completer._session_store = self._session_store
         self._completer = completer
         self._prompt_session = PromptSession(
-            message=self._prompt_str,
             completer=completer,
             complete_while_typing=True,
         )
@@ -355,8 +366,9 @@ class CliEntrypointComponent(BaseGatewayComponent):
 
         while True:
             try:
+                current_prompt = self._build_prompt(session_id)
                 line = await loop.run_in_executor(
-                    None, lambda: self._prompt_session.prompt()
+                    None, lambda: self._prompt_session.prompt(current_prompt)
                 )
                 line = line.strip()
 
@@ -491,7 +503,7 @@ class CliEntrypointComponent(BaseGatewayComponent):
             await self._cmd_sessions(session_id)
 
         elif cmd == "/switch":
-            return self._cmd_switch(args, session_id)
+            return await self._cmd_switch(args, session_id)
 
         elif cmd == "/rename":
             self._cmd_rename(args, session_id)
@@ -572,7 +584,7 @@ class CliEntrypointComponent(BaseGatewayComponent):
                 print(f"  {marker} {short_id}  ({stats})")
         print()
 
-    def _cmd_switch(self, args: List[str], current_session_id: str) -> Optional[str]:
+    async def _cmd_switch(self, args: List[str], current_session_id: str) -> Optional[str]:
         if not args:
             print("\033[93m  Usage: /switch <label|id>\033[0m\n")
             return None
@@ -591,7 +603,20 @@ class CliEntrypointComponent(BaseGatewayComponent):
         meta = self._session_store.get(session_id) or {}
         display = meta.get("label") or session_id
         count = meta.get("message_count", 0)
-        print(f"\033[92m  Switched to: {display} ({count} msgs)\033[0m\n")
+        age = self._format_age(meta.get("last_active", ""))
+        artifact_count = 0
+        if self.shared_artifact_service:
+            try:
+                artifacts = await self.shared_artifact_service.list_artifact_keys(
+                    app_name=self.gateway_id,
+                    user_id=self._user_id,
+                    session_id=session_id,
+                )
+                artifact_count = len([a for a in artifacts if not str(a).endswith(".metadata.json")])
+            except Exception:
+                pass
+        stats = f"{count} msgs, {artifact_count} artifacts, {age}"
+        print(f"\033[92m  Switched to: {display} ({stats})\033[0m\n")
         return f"new_session:{session_id}"
 
     def _cmd_rename(self, args: List[str], current_session_id: str) -> None:

@@ -46,7 +46,7 @@ apps:
 
       # --- CLI Adapter-Specific Config ---
       adapter_config:
-        prompt: "sam> "
+        prompt_name: "giri"
         user_id: ${CLI_ENTRYPOINT_USER, cli_entrypoint_user}
         show_status_updates: true
 

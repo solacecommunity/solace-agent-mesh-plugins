@@ -49,6 +49,16 @@ The plugin requires the following environment variables to be set:
 
 The `config.yaml` contains the entrypoint configuration including broker connection settings, adapter options, and artifact service setup. All configurable values are driven by environment variables with sensible defaults — edit your `.env` file or set the variables directly rather than modifying the YAML.
 
+### Adapter Options
+
+Configured under `adapter_config` in `config.yaml`:
+
+| Option | Default | Description |
+|---|---|---|
+| `prompt_name` | `"sam"` | Name displayed in the REPL prompt (e.g., `sam [default]>`) |
+| `user_id` | `"cli_entrypoint_user"` | User identity for this session |
+| `show_status_updates` | `true` | Show agent progress updates |
+
 ## Installation
 
 To add this plugin to your SAM project, run the following command:
@@ -96,9 +106,9 @@ CLI_ENTRYPOINT_ID=sam-cli-ep-02 sam run config.yaml  # second terminal
 |---|---|
 | `/new [label]` | Start a new session, optionally named |
 | `/sessions` | List all sessions with message counts and last active time |
-| `/switch <label\|id>` | Switch to an existing session |
+| `/switch <label\|id>` | Switch to an existing session (SAM reloads full history automatically) |
 | `/rename <label>` | Rename the current session |
-| `/delete <label\|id>` | Remove a session from the local index |
+| `/delete <label\|id>` | Remove a session from the local index (conversation history and artifacts remain on SAM) |
 
 #### General
 
@@ -107,11 +117,36 @@ CLI_ENTRYPOINT_ID=sam-cli-ep-02 sam run config.yaml  # second terminal
 | `/agents` | List registered agents |
 | `/upload <file> [message]` | Send a file to an agent |
 | `/artifacts` | List agent-created files in this session |
-| `/download [artifact] [path]` | Save artifacts (Tab completes artifact names) |
+| `/download [artifact] [path]` | Save artifacts (Tab completes artifact names; interactive multi-select if no artifact given) |
 | `/help` | Show available commands |
 | `/quit` | Exit the CLI |
 
-All commands support prefix matching (e.g., `/s` → `/sessions`, `/sw` → `/switch`).
+#### Command Shortcuts
+
+All commands support prefix matching. Type the shortest unambiguous prefix and press Enter:
+
+| Shortcut | Resolves to |
+|---|---|
+| `/se` | `/sessions` |
+| `/sw` | `/switch` |
+| `/n` | `/new` |
+| `/re` | `/rename` |
+| `/de` | `/delete` |
+| `/ag` | `/agents` |
+| `/ar` | `/artifacts` |
+| `/u` | `/upload` |
+| `/do` | `/download` |
+| `/h` | `/help` |
+| `/q` | `/quit` |
+
+#### How Sessions Work
+
+Sessions are identified by an internal `session_id` that scopes both conversation history and artifacts on SAM's side. The entrypoint maintains a local index (`~/.sam-cli-entrypoint/sessions.json`) that maps human-readable labels to session IDs and tracks metadata (message counts, timestamps).
+
+- **SAM is the source of truth** for conversation history and artifacts. The local index only stores labels and stats.
+- **Switching sessions** changes the `session_id` passed to SAM. The agent automatically picks up the full history for that session — no manual reload needed.
+- **Deleting a session** removes it from the local index only. SAM has no entrypoint-facing API to delete server-side history.
+- **Sessions persist across restarts.** On launch, the entrypoint restores the last active session from the index.
 
 ## External Services
 
