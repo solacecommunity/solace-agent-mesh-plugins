@@ -91,6 +91,12 @@ CLI_ENTRYPOINT_ID=sam-cli-ep-01 sam run config.yaml
 CLI_ENTRYPOINT_ID=sam-cli-ep-02 sam run config.yaml  # second terminal
 ```
 
+When running the CLI from a SAM installation, suppress verbose SAM framework logs that can clutter the terminal by setting the logging levels before launching:
+
+```bash
+LOGGING_SAC_LEVEL=ERROR LOGGING_SAM_LEVEL=ERROR sam run configs/gateways/my-cli.yaml
+```
+
 ### Example Prompts
 
 - *"What agents are available?"*
