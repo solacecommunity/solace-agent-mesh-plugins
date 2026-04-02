@@ -1,0 +1,171 @@
+# Plugin Metadata:
+# Name: dataiku-agent
+# Version: 0.1.0
+# Description: An agent to invoke Dataiku AI agents through the Solace Agent Mesh ecosystem
+# Author: Solace Community
+# 
+# --- Start of Agent Configuration Template ---
+# Solace Agent Mesh: Plugin Configuration Template
+#
+# This file serves as a template for creating new agent configurations from this plugin.
+# Use placeholders like __COMPONENT_KEBAB_CASE_NAME__, __COMPONENT_PASCAL_CASE_NAME__,
+# and __COMPONENT_UPPER_SNAKE_CASE_NAME__ where the specific component name should be inserted.
+
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: __COMPONENT_KEBAB_CASE_NAME__.log
+
+# To use the `shared_config.yaml` file, uncomment the following line and remove the `shared_config` section below.
+# !include ../shared_config.yaml
+shared_config:
+  - broker_connection: &broker_connection
+      dev_mode: ${SOLACE_DEV_MODE, false}
+      broker_url: ${SOLACE_BROKER_URL, ws://localhost:8080}
+      broker_username: ${SOLACE_BROKER_USERNAME, default}
+      broker_password: ${SOLACE_BROKER_PASSWORD, default}
+      broker_vpn: ${SOLACE_BROKER_VPN, default}
+      temporary_queue: ${USE_TEMPORARY_QUEUES, true}
+
+  - models:
+    general: &general_model
+      # This dictionary structure tells ADK to use the LiteLlm wrapper.
+      # 'model' uses the specific model identifier your endpoint expects.
+      model: ${LLM_SERVICE_GENERAL_MODEL_NAME} # Use env var for model name
+      # 'api_base' tells LiteLLM where to send the request.
+      api_base: ${LLM_SERVICE_ENDPOINT} # Use env var for endpoint URL
+      # 'api_key' provides authentication.
+      api_key: ${LLM_SERVICE_API_KEY} # Use env var for API key
+
+  - services:
+    # Default session service configuration
+    session_service: &default_session_service
+      type: "memory"
+      default_behavior: "PERSISTENT"
+    
+    # Default artifact service configuration
+    artifact_service: &default_artifact_service
+      type: "filesystem"
+      base_path: "/tmp/samv2"
+      artifact_scope: namespace # Or "namespace", "app", "custom"
+
+apps:
+  - name: __COMPONENT_KEBAB_CASE_NAME__-app
+    app_base_path: . 
+    app_module: solace_agent_mesh.agent.sac.app 
+    broker:
+      <<: *broker_connection
+
+    # App Level Config
+    app_config:
+      namespace: "${NAMESPACE}" 
+      supports_streaming: true 
+      agent_name: "__COMPONENT_PASCAL_CASE_NAME__" 
+      display_name: "__COMPONENT_PASCAL_CASE_NAME__ Agent"
+      model: *general_model 
+
+      instruction: |
+        You are a specialized Dataiku AI Agent integration assistant that enables seamless interaction with Dataiku agents through the Solace Agent Mesh ecosystem.
+
+        Core Capabilities:
+        - Invoke Dataiku AI agents with natural language messages
+        - List available Dataiku agents in a project
+        - Retrieve detailed information about specific agents
+        - Handle both streaming and non-streaming responses
+        - Extract and present sources and artifacts from agent responses
+
+        How to Use Your Tools:
+        1. **list_dataiku_agents**: Use this to discover what agents are available in the Dataiku project
+        2. **get_agent_info**: Use this to understand an agent's capabilities before invoking it
+        3. **invoke_dataiku_agent**: Use this to send messages to Dataiku agents and get responses
+
+        When Responding:
+        - If a user asks about available agents, use list_dataiku_agents first
+        - If a user wants to invoke an agent, ensure you have the correct agent_id (format: agent:xxxxxxxx)
+        - Present agent responses clearly, including any sources or artifacts provided
+        - If an error occurs, explain it clearly and suggest solutions (e.g., check credentials, verify agent_id)
+
+        Important Notes:
+        - Agent IDs follow the format: agent:xxxxxxxx
+        - You can optionally specify a project_key, otherwise the default project is used
+        - Streaming mode can be enabled for real-time responses
+        - Always check if the invocation was successful before presenting results
+
+        Your goal is to make Dataiku agent interactions seamless and intuitive for users.
+
+      # Lifecycle functions
+      agent_init_function:
+        module: "dataiku_agent.lifecycle"
+        name: "initialize_dataiku_agent"
+        base_path: .
+        config:
+          startup_message: "Dataiku Agent is ready to connect with Dataiku AI agents!"
+
+      agent_cleanup_function:
+        module: "dataiku_agent.lifecycle"
+        base_path: .
+        name: "cleanup_dataiku_agent"
+
+      tools:
+        - group_name: artifact_management
+          tool_type: builtin-group
+
+        # Dataiku Agent Tools (defined in tools.py)
+        - tool_type: python
+          component_module: "dataiku_agent.tools"
+          function_name: invoke_dataiku_agent
+          tool_description: "Invoke a Dataiku AI agent with a message and receive the response"
+          tool_config: {}
+
+        - tool_type: python
+          component_module: "dataiku_agent.tools"
+          function_name: list_dataiku_agents
+          tool_description: "List all available Dataiku agents in the project"
+          tool_config: {}
+
+        - tool_type: python
+          component_module: "dataiku_agent.tools"
+          function_name: get_agent_info
+          tool_description: "Get detailed information about a specific Dataiku agent"
+          tool_config: {}
+
+      session_service: *default_session_service
+      artifact_service: *default_artifact_service
+
+      artifact_handling_mode: "reference"
+      enable_embed_resolution: true
+      enable_artifact_content_instruction: true
+
+      agent_card:
+        description: |
+          Dataiku AI Agent integration for Solace Agent Mesh. Enables seamless invocation of Dataiku agents,
+          discovery of available agents, and retrieval of agent metadata. Supports both streaming and 
+          non-streaming responses, with full support for sources and artifacts returned by Dataiku agents.
+          Perfect for delegating specialized tasks to Dataiku's AI capabilities within the SAM ecosystem.
+        defaultInputModes: ["text"]
+        defaultOutputModes: ["text", "file"]
+        skills:
+          - id: "invoke_dataiku_agent"
+            name: "Invoke Dataiku Agent"
+            description: "Send a message to a Dataiku AI agent and receive the response, including any sources or artifacts"
+          
+          - id: "list_dataiku_agents"
+            name: "List Dataiku Agents"
+            description: "Discover all available Dataiku agents in the configured project"
+          
+          - id: "get_agent_info"
+            name: "Get Agent Information"
+            description: "Retrieve detailed metadata and configuration for a specific Dataiku agent"
+
+      agent_card_publishing: { interval_seconds: 10 }
+      agent_discovery: { enabled: true }
+      inter_agent_communication:
+        allow_list: ["*"]
+        deny_list: []
+        request_timeout_seconds: 600
+      
+      # Standard SAM configuration
+      max_conversation_turns: 100
+      conversation_timeout_seconds: 3600
+      enable_tool_calling: true
+      enable_artifact_creation: true

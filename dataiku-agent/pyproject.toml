@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.dataiku_agent.metadata]
+type = "agent"
+
+[project]
+name = "dataiku_agent"
+version = "0.1.0"
+authors = [
+  { name="Solace Community", email="community@solace.com" },
+]
+description = "An agent to invoke Dataiku AI agents through the Solace Agent Mesh ecosystem"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "dataiku-api-client>=12.0.0",
+    "httpx>=0.24.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dataiku_agent"]
+src-path = "src"
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/dataiku_agent" = "dataiku_agent/"
+"config.yaml" = "dataiku_agent/config.yaml"
+"README.md" = "dataiku_agent/README.md"
+"pyproject.toml" = "dataiku_agent/pyproject.toml"
