@@ -10,10 +10,15 @@ Dependencies:
 
 from __future__ import annotations
 
+import asyncio
+import copy
 import json
 import logging
 import os
+import shutil
 import tempfile
+import threading
+import uuid
 from datetime import datetime, timezone
 from io import BytesIO
 from typing import Any, Dict, List, Optional
@@ -594,4 +599,747 @@ async def create_workbook(
         }
     except Exception as exc:
         log.error("[ExcelTools:create_workbook] %s", exc)
+        return {"status": "error", "message": str(exc)}
+
+
+# ===========================================================================
+# Scheduled / cron-style recalculation
+# ===========================================================================
+
+# In-memory registry of scheduled jobs.  Each entry:
+#   { "id": str, "file_path": str, "interval_seconds": int,
+#     "inputs": dict|None, "output_cells": list|None,
+#     "sheet_name": str|None, "save_results_to": str|None,
+#     "created_at": str, "last_run": str|None, "run_count": int,
+#     "last_result": dict|None, "_cancel": threading.Event }
+_scheduled_jobs: Dict[str, Dict[str, Any]] = {}
+_scheduler_lock = threading.Lock()
+
+
+def _run_scheduled_job(job: Dict[str, Any]) -> None:
+    """Background worker that periodically recalculates a workbook."""
+    cancel_event: threading.Event = job["_cancel"]
+    while not cancel_event.is_set():
+        cancel_event.wait(job["interval_seconds"])
+        if cancel_event.is_set():
+            break
+        try:
+            result = asyncio.run(
+                recalculate(
+                    file_path=job["file_path"],
+                    inputs=job["inputs"],
+                    output_cells=job["output_cells"],
+                    sheet_name=job["sheet_name"],
+                )
+            )
+            job["last_run"] = datetime.now(timezone.utc).isoformat()
+            job["run_count"] += 1
+            job["last_result"] = result
+
+            # Optionally persist the recalculated results back to a file
+            if job.get("save_results_to") and result.get("status") == "success":
+                _persist_results(job, result)
+
+            log.info(
+                "[ExcelTools:scheduler] Job %s ran successfully (run #%d)",
+                job["id"], job["run_count"],
+            )
+        except Exception as exc:
+            log.error("[ExcelTools:scheduler] Job %s failed: %s", job["id"], exc)
+            job["last_result"] = {"status": "error", "message": str(exc)}
+
+
+def _persist_results(job: Dict[str, Any], result: Dict[str, Any]) -> None:
+    """Write recalculation results into the save_results_to workbook."""
+    out_path = job["save_results_to"]
+    try:
+        if os.path.isfile(out_path):
+            wb = openpyxl.load_workbook(out_path)
+        else:
+            wb = openpyxl.Workbook()
+
+        sheet_title = f"Run_{job['run_count']}"
+        if sheet_title in wb.sheetnames:
+            ws = wb[sheet_title]
+        else:
+            ws = wb.create_sheet(sheet_title)
+
+        ws["A1"] = "Timestamp"
+        ws["B1"] = job["last_run"]
+        row = 2
+        for cell_ref, val in result.get("results", {}).items():
+            ws.cell(row=row, column=1, value=cell_ref)
+            ws.cell(row=row, column=2, value=str(val) if not isinstance(val, (int, float)) else val)
+            row += 1
+        wb.save(out_path)
+        wb.close()
+    except Exception as exc:
+        log.error("[ExcelTools:scheduler] Failed to persist results: %s", exc)
+
+
+# ---------------------------------------------------------------------------
+# Tool 9 — Schedule a recurring recalculation
+# ---------------------------------------------------------------------------
+
+async def schedule_recalculation(
+    file_path: str,
+    interval_seconds: int = 300,
+    inputs: Optional[Dict[str, Any]] = None,
+    output_cells: Optional[List[str]] = None,
+    sheet_name: Optional[str] = None,
+    save_results_to: Optional[str] = None,
+    tool_context=None,
+    tool_config: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Schedule a recurring recalculation of an Excel workbook.
+
+    The workbook is re-evaluated at a fixed interval.  Optionally,
+    new input values can be injected each cycle and results can be
+    persisted to a separate workbook for audit / time-series tracking.
+
+    Args:
+        file_path: Absolute path to the .xlsx file.
+        interval_seconds: How often to recalculate (default 300 = 5 min).
+        inputs: Optional cell-to-value mapping applied before each run.
+        output_cells: Optional list of output cells to capture.
+        sheet_name: Default sheet for unqualified cell references.
+        save_results_to: Optional path to a workbook where each run's
+            results are appended as a new sheet (``Run_1``, ``Run_2``, ...).
+    """
+    log.info(
+        "[ExcelTools:schedule_recalculation] %s every %ds",
+        file_path, interval_seconds,
+    )
+    if not os.path.isfile(file_path):
+        return {"status": "error", "message": f"File not found: {file_path}"}
+    if interval_seconds < 10:
+        return {"status": "error", "message": "interval_seconds must be >= 10"}
+
+    job_id = uuid.uuid4().hex[:12]
+    cancel_event = threading.Event()
+
+    job: Dict[str, Any] = {
+        "id": job_id,
+        "file_path": file_path,
+        "interval_seconds": interval_seconds,
+        "inputs": inputs,
+        "output_cells": output_cells,
+        "sheet_name": sheet_name,
+        "save_results_to": save_results_to,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "last_run": None,
+        "run_count": 0,
+        "last_result": None,
+        "_cancel": cancel_event,
+    }
+
+    thread = threading.Thread(
+        target=_run_scheduled_job,
+        args=(job,),
+        daemon=True,
+        name=f"excel-cron-{job_id}",
+    )
+    thread.start()
+
+    with _scheduler_lock:
+        _scheduled_jobs[job_id] = job
+
+    return {
+        "status": "success",
+        "job_id": job_id,
+        "file": file_path,
+        "interval_seconds": interval_seconds,
+        "message": (
+            f"Scheduled recalculation every {interval_seconds}s. "
+            f"Job ID: {job_id}"
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Tool 10 — List scheduled jobs
+# ---------------------------------------------------------------------------
+
+async def list_scheduled_jobs(
+    tool_context=None,
+    tool_config: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """List all active scheduled recalculation jobs.
+
+    Returns metadata for every running job including last run time,
+    run count, and most recent result.
+    """
+    log.info("[ExcelTools:list_scheduled_jobs]")
+    with _scheduler_lock:
+        jobs = []
+        for j in _scheduled_jobs.values():
+            jobs.append({
+                "id": j["id"],
+                "file_path": j["file_path"],
+                "interval_seconds": j["interval_seconds"],
+                "created_at": j["created_at"],
+                "last_run": j["last_run"],
+                "run_count": j["run_count"],
+                "save_results_to": j.get("save_results_to"),
+            })
+    return {"status": "success", "jobs": jobs, "count": len(jobs)}
+
+
+# ---------------------------------------------------------------------------
+# Tool 11 — Cancel a scheduled job
+# ---------------------------------------------------------------------------
+
+async def cancel_scheduled_job(
+    job_id: str,
+    tool_context=None,
+    tool_config: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Cancel a running scheduled recalculation job.
+
+    Args:
+        job_id: The job ID returned by ``schedule_recalculation``.
+    """
+    log.info("[ExcelTools:cancel_scheduled_job] %s", job_id)
+    with _scheduler_lock:
+        job = _scheduled_jobs.pop(job_id, None)
+    if not job:
+        return {"status": "error", "message": f"No job with ID '{job_id}'"}
+
+    job["_cancel"].set()
+    return {
+        "status": "success",
+        "job_id": job_id,
+        "run_count": job["run_count"],
+        "message": f"Job {job_id} cancelled after {job['run_count']} runs.",
+    }
+
+
+# ===========================================================================
+# Advanced automation tools
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Tool 12 — Batch / scenario recalculation
+# ---------------------------------------------------------------------------
+
+async def batch_recalculate(
+    file_path: str,
+    scenarios: List[Dict[str, Any]] = None,
+    output_cells: Optional[List[str]] = None,
+    sheet_name: Optional[str] = None,
+    tool_context=None,
+    tool_config: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Run multiple what-if scenarios in a single call.
+
+    Each scenario is a set of input overrides.  The tool evaluates
+    every scenario independently and returns all results together —
+    ideal for sensitivity analysis, pricing tiers, or Monte Carlo inputs.
+
+    Args:
+        file_path: Absolute path to the .xlsx file.
+        scenarios: List of scenario dicts.  Each dict has:
+            - ``name`` (str, optional): A label for the scenario.
+            - ``inputs`` (dict): Cell-to-value mapping, same as *recalculate*.
+        output_cells: Cells to capture from each scenario.
+        sheet_name: Default sheet for unqualified references.
+
+    Example ``scenarios``::
+
+        [
+            {"name": "Low",  "inputs": {"B2": 100}},
+            {"name": "Mid",  "inputs": {"B2": 250}},
+            {"name": "High", "inputs": {"B2": 500}},
+        ]
+    """
+    log.info("[ExcelTools:batch_recalculate] %s scenarios=%d", file_path, len(scenarios or []))
+    if not scenarios:
+        return {"status": "error", "message": "scenarios parameter is required (list of dicts)"}
+
+    results = []
+    for idx, scenario in enumerate(scenarios):
+        name = scenario.get("name", f"scenario_{idx + 1}")
+        inputs = scenario.get("inputs")
+        if not inputs:
+            results.append({"name": name, "status": "error", "message": "scenario missing 'inputs'"})
+            continue
+
+        r = await recalculate(
+            file_path=file_path,
+            inputs=inputs,
+            output_cells=output_cells,
+            sheet_name=sheet_name,
+        )
+        r["name"] = name
+        results.append(r)
+
+    return {
+        "status": "success",
+        "file": file_path,
+        "scenario_count": len(results),
+        "scenarios": results,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Tool 13 — Copy / duplicate a sheet
+# ---------------------------------------------------------------------------
+
+async def copy_sheet(
+    file_path: str,
+    source_sheet: str,
+    new_sheet_name: str,
+    target_file: Optional[str] = None,
+    tool_context=None,
+    tool_config: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Duplicate a sheet within the same workbook or into another file.
+
+    Args:
+        file_path: Source workbook path.
+        source_sheet: Name of the sheet to copy.
+        new_sheet_name: Name for the new sheet.
+        target_file: If provided, the copy is placed in this workbook
+            instead.  The target file is created if it does not exist.
+    """
+    log.info(
+        "[ExcelTools:copy_sheet] %s %s -> %s (target=%s)",
+        file_path, source_sheet, new_sheet_name, target_file,
+    )
+    try:
+        wb_src = _open_workbook(file_path, data_only=False)
+        if source_sheet not in wb_src.sheetnames:
+            wb_src.close()
+            return {"status": "error", "message": f"Sheet '{source_sheet}' not found"}
+
+        if target_file and target_file != file_path:
+            # Cross-workbook copy
+            if os.path.isfile(target_file):
+                wb_dst = openpyxl.load_workbook(target_file)
+            else:
+                wb_dst = openpyxl.Workbook()
+                # Remove the default empty sheet if we're creating fresh
+                if "Sheet" in wb_dst.sheetnames and len(wb_dst.sheetnames) == 1:
+                    del wb_dst["Sheet"]
+
+            ws_src = wb_src[source_sheet]
+            ws_dst = wb_dst.create_sheet(new_sheet_name)
+
+            for row in ws_src.iter_rows():
+                for cell in row:
+                    ws_dst.cell(
+                        row=cell.row, column=cell.column, value=cell.value
+                    )
+
+            wb_dst.save(target_file)
+            wb_dst.close()
+            wb_src.close()
+            out = target_file
+        else:
+            # Same-workbook copy
+            ws_src = wb_src[source_sheet]
+            ws_new = wb_src.copy_worksheet(ws_src)
+            ws_new.title = new_sheet_name
+            wb_src.save(file_path)
+            wb_src.close()
+            out = file_path
+
+        return {
+            "status": "success",
+            "file": out,
+            "source_sheet": source_sheet,
+            "new_sheet": new_sheet_name,
+        }
+    except Exception as exc:
+        log.error("[ExcelTools:copy_sheet] %s", exc)
+        return {"status": "error", "message": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# Tool 14 — Apply a template
+# ---------------------------------------------------------------------------
+
+async def apply_template(
+    template_path: str,
+    output_path: str,
+    values: Dict[str, Any] = None,
+    sheet_name: Optional[str] = None,
+    tool_context=None,
+    tool_config: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Stamp a template workbook with new values and save a copy.
+
+    Copies the template, then writes the supplied values into the
+    specified cells.  Formulas in the template are preserved and will
+    recalculate when opened in Excel (or via ``evaluate_formulas``).
+
+    Args:
+        template_path: Path to the template .xlsx file (not modified).
+        output_path: Where to save the filled copy.
+        values: Cell-to-value mapping, e.g. ``{"B2": "Acme Corp", "C5": 42000}``.
+        sheet_name: Target sheet. Defaults to the active sheet.
+    """
+    log.info("[ExcelTools:apply_template] %s -> %s", template_path, output_path)
+    if not values:
+        return {"status": "error", "message": "values parameter is required"}
+    if not os.path.isfile(template_path):
+        return {"status": "error", "message": f"Template not found: {template_path}"}
+
+    try:
+        shutil.copy2(template_path, output_path)
+        wb = openpyxl.load_workbook(output_path)
+        ws = wb[sheet_name] if sheet_name else wb.active
+
+        written = []
+        for ref, val in values.items():
+            ws[ref] = val
+            written.append(ref)
+
+        wb.save(output_path)
+        wb.close()
+
+        return {
+            "status": "success",
+            "template": template_path,
+            "output": output_path,
+            "cells_written": written,
+            "count": len(written),
+        }
+    except Exception as exc:
+        log.error("[ExcelTools:apply_template] %s", exc)
+        return {"status": "error", "message": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# Tool 15 — Diff two workbooks
+# ---------------------------------------------------------------------------
+
+async def diff_workbooks(
+    file_a: str,
+    file_b: str,
+    sheet_name: Optional[str] = None,
+    tool_context=None,
+    tool_config: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Compare two workbooks cell-by-cell and return the differences.
+
+    Compares values (data_only mode) for the specified sheet or the
+    first sheet in each workbook.
+
+    Args:
+        file_a: Path to the first workbook.
+        file_b: Path to the second workbook.
+        sheet_name: Sheet to compare. Defaults to the first sheet.
+    """
+    log.info("[ExcelTools:diff_workbooks] %s vs %s", file_a, file_b)
+    try:
+        wb_a = _open_workbook(file_a, data_only=True)
+        wb_b = _open_workbook(file_b, data_only=True)
+
+        ws_a = wb_a[sheet_name] if sheet_name else wb_a.active
+        ws_b = wb_b[sheet_name] if sheet_name else wb_b.active
+
+        max_row = max(ws_a.max_row or 1, ws_b.max_row or 1)
+        max_col = max(ws_a.max_column or 1, ws_b.max_column or 1)
+
+        diffs: List[Dict[str, Any]] = []
+        for r in range(1, max_row + 1):
+            for c in range(1, max_col + 1):
+                va = ws_a.cell(row=r, column=c).value
+                vb = ws_b.cell(row=r, column=c).value
+                if va != vb:
+                    ref = _cell_ref(r, c)
+                    diffs.append({
+                        "cell": ref,
+                        "file_a": _safe_serialize(va),
+                        "file_b": _safe_serialize(vb),
+                    })
+
+        wb_a.close()
+        wb_b.close()
+
+        return {
+            "status": "success",
+            "file_a": file_a,
+            "file_b": file_b,
+            "sheet": sheet_name or ws_a.title,
+            "differences": diffs,
+            "diff_count": len(diffs),
+            "identical": len(diffs) == 0,
+        }
+    except Exception as exc:
+        log.error("[ExcelTools:diff_workbooks] %s", exc)
+        return {"status": "error", "message": str(exc)}
+
+
+def _safe_serialize(val: Any) -> Any:
+    """Convert a value to a JSON-safe type."""
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return val.isoformat()
+    return val
+
+
+# ---------------------------------------------------------------------------
+# Tool 16 — Validate formulas
+# ---------------------------------------------------------------------------
+
+async def validate_formulas(
+    file_path: str,
+    sheet_name: Optional[str] = None,
+    tool_context=None,
+    tool_config: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Check every formula in a sheet for errors and issues.
+
+    Evaluates all formulas and flags cells that return Excel error
+    values (``#REF!``, ``#DIV/0!``, ``#NAME?``, ``#VALUE!``, ``#N/A``,
+    ``#NULL!``, ``#NUM!``).  Also detects formulas referencing cells
+    outside the used range (potential dangling references).
+
+    Args:
+        file_path: Absolute path to the .xlsx file.
+        sheet_name: Sheet to validate. Defaults to the active sheet.
+    """
+    log.info("[ExcelTools:validate_formulas] %s sheet=%s", file_path, sheet_name)
+    try:
+        # Get formulas
+        wb_fml = _open_workbook(file_path, data_only=False)
+        ws_fml = wb_fml[sheet_name] if sheet_name else wb_fml.active
+
+        # Get cached values
+        wb_val = _open_workbook(file_path, data_only=True)
+        ws_val = wb_val[sheet_name] if sheet_name else wb_val.active
+
+        used_max_row = ws_fml.max_row or 1
+        used_max_col = ws_fml.max_column or 1
+
+        error_tokens = {"#REF!", "#DIV/0!", "#NAME?", "#VALUE!", "#N/A", "#NULL!", "#NUM!"}
+
+        issues: List[Dict[str, Any]] = []
+        formula_count = 0
+
+        for row in ws_fml.iter_rows(
+            min_row=ws_fml.min_row or 1,
+            max_row=used_max_row,
+            min_col=ws_fml.min_column or 1,
+            max_col=used_max_col,
+        ):
+            for cell in row:
+                if not isinstance(cell.value, str) or not cell.value.startswith("="):
+                    continue
+                formula_count += 1
+                ref = _cell_ref(cell.row, cell.column)
+
+                # Check cached value for error tokens
+                cached = ws_val.cell(row=cell.row, column=cell.column).value
+                if isinstance(cached, str) and cached.strip() in error_tokens:
+                    issues.append({
+                        "cell": ref,
+                        "formula": cell.value,
+                        "error": cached.strip(),
+                        "severity": "error",
+                    })
+
+        # Try full evaluation to catch runtime errors
+        try:
+            xl_model = formulas.ExcelModel().loads(file_path).finish()
+            solution = xl_model.calculate()
+            for key, value in solution.items():
+                val = _unwrap_value(value)
+                if isinstance(val, str) and val.strip() in error_tokens:
+                    parts = str(key).split("!")
+                    cell_addr = parts[1] if len(parts) == 2 else str(key)
+                    # Avoid duplicates
+                    if not any(i["cell"] == cell_addr for i in issues):
+                        issues.append({
+                            "cell": cell_addr,
+                            "formula": None,
+                            "error": val.strip(),
+                            "severity": "error",
+                        })
+        except Exception as eval_exc:
+            issues.append({
+                "cell": "N/A",
+                "formula": None,
+                "error": f"Evaluation engine error: {eval_exc}",
+                "severity": "warning",
+            })
+
+        wb_fml.close()
+        wb_val.close()
+
+        return {
+            "status": "success",
+            "file": file_path,
+            "sheet": sheet_name or ws_fml.title,
+            "formulas_checked": formula_count,
+            "issues": issues,
+            "issue_count": len(issues),
+            "valid": len(issues) == 0,
+        }
+    except Exception as exc:
+        log.error("[ExcelTools:validate_formulas] %s", exc)
+        return {"status": "error", "message": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# Tool 17 — Export sheet to JSON
+# ---------------------------------------------------------------------------
+
+async def export_sheet_to_json(
+    file_path: str,
+    sheet_name: Optional[str] = None,
+    output_path: Optional[str] = None,
+    orient: str = "records",
+    max_rows: int = 5000,
+    tool_context=None,
+    tool_config: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Export a sheet's data as JSON for pipeline integration.
+
+    Reads the sheet (values only, no formulas) and returns or saves
+    the data as a JSON structure.  The first row is treated as headers.
+
+    Args:
+        file_path: Absolute path to the .xlsx file.
+        sheet_name: Sheet to export. Defaults to the active sheet.
+        output_path: If provided, the JSON is written to this file.
+        orient: Output format:
+            - ``"records"`` (default): list of ``{header: value}`` dicts.
+            - ``"columns"``: ``{header: [values...]}`` mapping.
+            - ``"rows"``: list of lists (raw rows including headers).
+        max_rows: Maximum data rows to export (default 5000).
+    """
+    log.info("[ExcelTools:export_sheet_to_json] %s orient=%s", file_path, orient)
+    try:
+        wb = _open_workbook(file_path, data_only=True)
+        ws = wb[sheet_name] if sheet_name else wb.active
+
+        min_r = ws.min_row or 1
+        max_r = min(ws.max_row or 1, min_r + max_rows)
+        min_c = ws.min_column or 1
+        max_c = ws.max_column or 1
+
+        # Read headers from first row
+        headers = []
+        for c in range(min_c, max_c + 1):
+            v = ws.cell(row=min_r, column=c).value
+            headers.append(str(v) if v is not None else f"col_{c}")
+
+        # Read data rows
+        data_rows = []
+        for r in range(min_r + 1, max_r + 1):
+            row_vals = []
+            for c in range(min_c, max_c + 1):
+                row_vals.append(_safe_serialize(ws.cell(row=r, column=c).value))
+            data_rows.append(row_vals)
+
+        wb.close()
+
+        # Format output
+        if orient == "records":
+            output = [dict(zip(headers, row)) for row in data_rows]
+        elif orient == "columns":
+            output = {}
+            for i, h in enumerate(headers):
+                output[h] = [row[i] for row in data_rows]
+        elif orient == "rows":
+            output = [headers] + data_rows
+        else:
+            return {"status": "error", "message": f"Unknown orient '{orient}'. Use records, columns, or rows."}
+
+        # Optionally save to file
+        if output_path:
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(output, f, indent=2, default=str)
+
+        return {
+            "status": "success",
+            "file": file_path,
+            "sheet": sheet_name or ws.title,
+            "orient": orient,
+            "row_count": len(data_rows),
+            "data": output,
+            "saved_to": output_path,
+        }
+    except Exception as exc:
+        log.error("[ExcelTools:export_sheet_to_json] %s", exc)
+        return {"status": "error", "message": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# Tool 18 — Snapshot / freeze formulas to values
+# ---------------------------------------------------------------------------
+
+async def snapshot_formulas(
+    file_path: str,
+    output_path: Optional[str] = None,
+    sheet_name: Optional[str] = None,
+    tool_context=None,
+    tool_config: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Replace all formulas with their computed values (freeze).
+
+    Creates a "snapshot" copy where every formula cell is replaced by
+    its evaluated result.  Useful for archiving a point-in-time state
+    or sending a workbook to someone who should not see the formulas.
+
+    Args:
+        file_path: Path to the source .xlsx file.
+        output_path: Where to save the snapshot.  If omitted, a
+            ``_snapshot`` suffix is added to the original filename.
+        sheet_name: Sheet to snapshot.  If omitted, all sheets are
+            processed.
+    """
+    log.info("[ExcelTools:snapshot_formulas] %s", file_path)
+    try:
+        # Evaluate all formulas
+        xl_model = formulas.ExcelModel().loads(file_path).finish()
+        solution = xl_model.calculate()
+
+        # Build a lookup: (sheet_upper, cell_upper) -> value
+        evaluated: Dict[tuple, Any] = {}
+        for key, value in solution.items():
+            parts = str(key).split("!")
+            if len(parts) == 2:
+                # Strip '[filename]' from sheet part
+                raw_sheet = parts[0].strip("'\"")
+                if "]" in raw_sheet:
+                    raw_sheet = raw_sheet.split("]", 1)[1]
+                evaluated[(raw_sheet.upper(), parts[1].upper())] = _unwrap_value(value)
+
+        # Open the workbook (with formulas) and overwrite formula cells
+        if not output_path:
+            base, ext = os.path.splitext(file_path)
+            output_path = f"{base}_snapshot{ext}"
+
+        shutil.copy2(file_path, output_path)
+        wb = openpyxl.load_workbook(output_path)
+
+        sheets_to_process = [sheet_name] if sheet_name else wb.sheetnames
+        replaced_count = 0
+
+        for sn in sheets_to_process:
+            ws = wb[sn]
+            for row in ws.iter_rows():
+                for cell in row:
+                    if isinstance(cell.value, str) and cell.value.startswith("="):
+                        lookup_key = (sn.upper(), _cell_ref(cell.row, cell.column))
+                        if lookup_key in evaluated:
+                            cell.value = evaluated[lookup_key]
+                            replaced_count += 1
+
+        wb.save(output_path)
+        wb.close()
+
+        return {
+            "status": "success",
+            "source": file_path,
+            "output": output_path,
+            "formulas_replaced": replaced_count,
+        }
+    except Exception as exc:
+        log.error("[ExcelTools:snapshot_formulas] %s", exc)
         return {"status": "error", "message": str(exc)}

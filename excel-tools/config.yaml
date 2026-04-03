@@ -1,7 +1,7 @@
 # Plugin Metadata:
 # Name: excel-tools
-# Version: 0.1.0
-# Description: Read, write, analyze, and reproduce calculations in Excel spreadsheets through natural language.
+# Version: 0.2.0
+# Description: Read, write, analyze, automate, and reproduce calculations in Excel spreadsheets. Includes cron-style scheduled recalculation, batch scenario analysis, template stamping, and more.
 # Author: Raphael Caillon
 #
 # --- Start of Agent Configuration Template ---
@@ -59,18 +59,25 @@ apps:
 
       instruction: |
         You are a specialized Excel spreadsheet agent. You help users read,
-        analyze, modify, and reproduce calculations in Excel workbooks
-        (.xlsx files) without needing Microsoft Excel.
+        analyze, modify, automate, and reproduce calculations in Excel
+        workbooks (.xlsx files) without needing Microsoft Excel.
 
         Core Capabilities:
-        - List sheets in a workbook
-        - Read cell values and ranges
-        - Extract and inspect formulas
+        - List sheets, read cell values and ranges, extract formulas
         - Evaluate all formulas using a pure-Python calculation engine
         - Run "what-if" scenarios by changing input cells and recalculating
-        - Write values or formulas to cells
-        - Create new workbooks with headers and data
+        - Write values or formulas to cells, create new workbooks
         - Provide structural analysis with column types, statistics, and formula maps
+
+        Automation & Scheduling:
+        - Schedule recurring recalculations (cron jobs) that run at fixed intervals
+        - List and cancel running scheduled jobs
+        - Run batch scenario analysis (multiple what-if cases in one call)
+        - Stamp templates with new data to produce filled reports
+        - Compare two workbooks cell-by-cell to find differences
+        - Validate formulas for errors (#REF!, #DIV/0!, etc.)
+        - Export sheet data to JSON for pipeline integration
+        - Snapshot/freeze formulas to their computed values
 
         How to Respond:
         - When a user asks to "open" or "look at" a file, start with analyze_sheet
@@ -79,6 +86,12 @@ apps:
           evaluate_formulas to compute their results.
         - For "what-if" questions ("what happens if revenue is 500k?"), use
           recalculate with the new inputs and return the changed outputs.
+        - For multiple scenarios ("compare low/mid/high pricing"), use
+          batch_recalculate to run them all at once.
+        - When a user wants recurring updates ("recalculate every hour"),
+          use schedule_recalculation and confirm the job ID.
+        - For comparing versions of a file, use diff_workbooks.
+        - For generating reports from a template, use apply_template.
         - Always present numbers clearly with context (units, percentages, etc.)
           when the column headers imply them.
         - If the file path is relative, resolve it against the current working
@@ -89,10 +102,14 @@ apps:
         - Large sheets are truncated to 200 rows by default; tell the user if
           data was truncated and offer to read specific ranges.
         - When writing, offer to save as a new file to preserve the original.
+        - Scheduled jobs run as background threads and persist until cancelled
+          or the agent restarts.
 
       tools:
         - group_name: artifact_management
           tool_type: builtin-group
+
+        # --- Core tools ---
 
         - tool_type: python
           component_module: "excel_tools.tools"
@@ -142,6 +159,70 @@ apps:
           tool_description: "Create a new Excel workbook with optional headers and data rows"
           tool_config: {}
 
+        # --- Scheduling / cron tools ---
+
+        - tool_type: python
+          component_module: "excel_tools.tools"
+          function_name: schedule_recalculation
+          tool_description: "Schedule a recurring recalculation of a workbook at a fixed interval (cron job). Optionally persist results to a separate file."
+          tool_config: {}
+
+        - tool_type: python
+          component_module: "excel_tools.tools"
+          function_name: list_scheduled_jobs
+          tool_description: "List all active scheduled recalculation jobs with their status and run history"
+          tool_config: {}
+
+        - tool_type: python
+          component_module: "excel_tools.tools"
+          function_name: cancel_scheduled_job
+          tool_description: "Cancel a running scheduled recalculation job by its ID"
+          tool_config: {}
+
+        # --- Advanced automation tools ---
+
+        - tool_type: python
+          component_module: "excel_tools.tools"
+          function_name: batch_recalculate
+          tool_description: "Run multiple what-if scenarios in one call for sensitivity or scenario analysis"
+          tool_config: {}
+
+        - tool_type: python
+          component_module: "excel_tools.tools"
+          function_name: copy_sheet
+          tool_description: "Duplicate a sheet within the same workbook or copy it to another workbook"
+          tool_config: {}
+
+        - tool_type: python
+          component_module: "excel_tools.tools"
+          function_name: apply_template
+          tool_description: "Stamp a template workbook with new values and save a filled copy — formulas are preserved"
+          tool_config: {}
+
+        - tool_type: python
+          component_module: "excel_tools.tools"
+          function_name: diff_workbooks
+          tool_description: "Compare two workbooks cell-by-cell and return all differences"
+          tool_config: {}
+
+        - tool_type: python
+          component_module: "excel_tools.tools"
+          function_name: validate_formulas
+          tool_description: "Check every formula for errors (#REF!, #DIV/0!, #NAME?, etc.) and report issues"
+          tool_config: {}
+
+        - tool_type: python
+          component_module: "excel_tools.tools"
+          function_name: export_sheet_to_json
+          tool_description: "Export sheet data as JSON (records, columns, or rows) for pipeline integration"
+          tool_config: {}
+
+        - tool_type: python
+          component_module: "excel_tools.tools"
+          function_name: snapshot_formulas
+          tool_description: "Replace all formulas with their computed values to create a frozen point-in-time copy"
+          tool_config: {}
+
       session_service: *default_session_service
       artifact_service: *default_artifact_service
 
@@ -150,7 +231,7 @@ apps:
       enable_artifact_content_instruction: true
 
       agent_card:
-        description: Excel spreadsheet agent that reads, writes, analyzes, and reproduces calculations in .xlsx files. Supports formula extraction, pure-Python formula evaluation, what-if recalculation with new inputs, structural analysis with statistics, and workbook creation — all without requiring Microsoft Excel.
+        description: Excel spreadsheet agent that reads, writes, analyzes, automates, and reproduces calculations in .xlsx files. Supports scheduled cron-style recalculation, batch scenario analysis, template stamping, workbook diffing, formula validation, JSON export, and formula snapshots — all without requiring Microsoft Excel.
         defaultInputModes: ["text", "file"]
         defaultOutputModes: ["text", "file"]
         skills:
@@ -185,6 +266,46 @@ apps:
           - id: "create_workbook"
             name: "Create Workbook"
             description: "Create a new Excel workbook with optional headers and data."
+
+          - id: "schedule_recalculation"
+            name: "Schedule Recalculation"
+            description: "Set up a recurring cron-style recalculation job."
+
+          - id: "list_scheduled_jobs"
+            name: "List Scheduled Jobs"
+            description: "Show all active scheduled recalculation jobs."
+
+          - id: "cancel_scheduled_job"
+            name: "Cancel Scheduled Job"
+            description: "Stop a running scheduled recalculation job."
+
+          - id: "batch_recalculate"
+            name: "Batch Recalculate"
+            description: "Run multiple what-if scenarios at once for sensitivity analysis."
+
+          - id: "copy_sheet"
+            name: "Copy Sheet"
+            description: "Duplicate a sheet within or across workbooks."
+
+          - id: "apply_template"
+            name: "Apply Template"
+            description: "Fill a template workbook with new data and save a copy."
+
+          - id: "diff_workbooks"
+            name: "Diff Workbooks"
+            description: "Compare two workbooks cell-by-cell."
+
+          - id: "validate_formulas"
+            name: "Validate Formulas"
+            description: "Check formulas for errors like #REF!, #DIV/0!, etc."
+
+          - id: "export_sheet_to_json"
+            name: "Export to JSON"
+            description: "Export sheet data as JSON for pipeline integration."
+
+          - id: "snapshot_formulas"
+            name: "Snapshot Formulas"
+            description: "Replace formulas with computed values for a frozen copy."
 
       agent_card_publishing: { interval_seconds: 10 }
       agent_discovery: { enabled: false }
