@@ -1,6 +1,6 @@
 # Plugin Metadata:
 # Name: excel-tools
-# Version: 0.2.0
+# Version: 0.3.0
 # Description: Read, write, analyze, automate, and reproduce calculations in Excel spreadsheets. Includes cron-style scheduled recalculation, batch scenario analysis, template stamping, and more.
 # Author: Raphael Caillon
 #
@@ -115,42 +115,49 @@ apps:
           component_module: "excel_tools.tools"
           function_name: list_sheets
           tool_description: "List all sheet names in an Excel workbook"
+          artifact_args: ["file_path"]
           tool_config: {}
 
         - tool_type: python
           component_module: "excel_tools.tools"
           function_name: read_range
           tool_description: "Read cell values and optionally formulas from an Excel range or entire sheet"
+          artifact_args: ["file_path"]
           tool_config: {}
 
         - tool_type: python
           component_module: "excel_tools.tools"
           function_name: get_formulas
           tool_description: "Extract all formula strings from a sheet or range, returning a cell-to-formula mapping"
+          artifact_args: ["file_path"]
           tool_config: {}
 
         - tool_type: python
           component_module: "excel_tools.tools"
           function_name: evaluate_formulas
           tool_description: "Evaluate Excel formulas in pure Python and return computed results — no Excel installation needed"
+          artifact_args: ["file_path"]
           tool_config: {}
 
         - tool_type: python
           component_module: "excel_tools.tools"
           function_name: recalculate
           tool_description: "Change input cell values and recalculate the entire spreadsheet to see updated outputs (what-if analysis)"
+          artifact_args: ["file_path"]
           tool_config: {}
 
         - tool_type: python
           component_module: "excel_tools.tools"
           function_name: analyze_sheet
           tool_description: "Return a structural summary of a sheet: dimensions, headers, column types, statistics, and formula locations"
+          artifact_args: ["file_path"]
           tool_config: {}
 
         - tool_type: python
           component_module: "excel_tools.tools"
           function_name: write_cells
           tool_description: "Write values or formulas to specific cells and save the workbook"
+          artifact_args: ["file_path"]
           tool_config: {}
 
         - tool_type: python
@@ -185,42 +192,49 @@ apps:
           component_module: "excel_tools.tools"
           function_name: batch_recalculate
           tool_description: "Run multiple what-if scenarios in one call for sensitivity or scenario analysis"
+          artifact_args: ["file_path"]
           tool_config: {}
 
         - tool_type: python
           component_module: "excel_tools.tools"
           function_name: copy_sheet
           tool_description: "Duplicate a sheet within the same workbook or copy it to another workbook"
+          artifact_args: ["file_path"]
           tool_config: {}
 
         - tool_type: python
           component_module: "excel_tools.tools"
           function_name: apply_template
           tool_description: "Stamp a template workbook with new values and save a filled copy — formulas are preserved"
+          artifact_args: ["template_path"]
           tool_config: {}
 
         - tool_type: python
           component_module: "excel_tools.tools"
           function_name: diff_workbooks
           tool_description: "Compare two workbooks cell-by-cell and return all differences"
+          artifact_args: ["file_a", "file_b"]
           tool_config: {}
 
         - tool_type: python
           component_module: "excel_tools.tools"
           function_name: validate_formulas
           tool_description: "Check every formula for errors (#REF!, #DIV/0!, #NAME?, etc.) and report issues"
+          artifact_args: ["file_path"]
           tool_config: {}
 
         - tool_type: python
           component_module: "excel_tools.tools"
           function_name: export_sheet_to_json
           tool_description: "Export sheet data as JSON (records, columns, or rows) for pipeline integration"
+          artifact_args: ["file_path"]
           tool_config: {}
 
         - tool_type: python
           component_module: "excel_tools.tools"
           function_name: snapshot_formulas
           tool_description: "Replace all formulas with their computed values to create a frozen point-in-time copy"
+          artifact_args: ["file_path"]
           tool_config: {}
 
       session_service: *default_session_service

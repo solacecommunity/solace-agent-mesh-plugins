@@ -678,3 +678,123 @@ async def test_snapshot_formulas_single_sheet(sample_workbook, tmp_path):
     # Summary sheet formula referencing Sales!D6 may or may not be replaced
     # depending on whether we process it; we only asked for Sales
     wb.close()
+
+
+# ====================================================================
+# Artifact support tests
+# ====================================================================
+
+class FakeArtifact:
+    """Mimics the SAM Artifact dataclass for testing without SAM installed."""
+
+    def __init__(self, content: bytes, filename: str):
+        self.content = content
+        self.filename = filename
+        self.version = 1
+        self.mime_type = (
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        self.metadata = {}
+
+    def as_bytes(self, encoding: str = "utf-8") -> bytes:
+        if isinstance(self.content, str):
+            return self.content.encode(encoding)
+        return self.content
+
+    def as_text(self, encoding: str = "utf-8") -> str:
+        if isinstance(self.content, bytes):
+            return self.content.decode(encoding)
+        return self.content
+
+
+def _make_artifact(workbook_path: str) -> FakeArtifact:
+    """Read a workbook from disk and wrap it in a FakeArtifact."""
+    with open(workbook_path, "rb") as f:
+        data = f.read()
+    return FakeArtifact(content=data, filename=os.path.basename(workbook_path))
+
+
+@pytest.mark.asyncio
+async def test_list_sheets_artifact(sample_workbook):
+    art = _make_artifact(sample_workbook)
+    result = await list_sheets(file_path=art)
+    assert result["status"] == "success"
+    assert result["sheet_count"] == 2
+    assert "Sales" in result["sheets"]
+    assert result["file"] == "test.xlsx"
+
+
+@pytest.mark.asyncio
+async def test_read_range_artifact(sample_workbook):
+    art = _make_artifact(sample_workbook)
+    result = await read_range(file_path=art, sheet_name="Sales")
+    assert result["status"] == "success"
+    assert result["rows"][0] == ["Product", "Quantity", "Price", "Total"]
+
+
+@pytest.mark.asyncio
+async def test_get_formulas_artifact(sample_workbook):
+    art = _make_artifact(sample_workbook)
+    result = await get_formulas(file_path=art, sheet_name="Sales")
+    assert result["status"] == "success"
+    assert result["formula_count"] > 0
+    assert "D2" in result["formulas"]
+
+
+@pytest.mark.asyncio
+async def test_evaluate_formulas_artifact(sample_workbook):
+    art = _make_artifact(sample_workbook)
+    result = await evaluate_formulas(file_path=art)
+    assert result["status"] == "success"
+    assert result["evaluated_count"] > 0
+
+
+@pytest.mark.asyncio
+async def test_analyze_sheet_artifact(sample_workbook):
+    art = _make_artifact(sample_workbook)
+    result = await analyze_sheet(file_path=art, sheet_name="Sales")
+    assert result["status"] == "success"
+    assert result["file"] == "test.xlsx"
+    assert result["headers"][0] == "Product"
+
+
+@pytest.mark.asyncio
+async def test_recalculate_artifact(sample_workbook):
+    art = _make_artifact(sample_workbook)
+    result = await recalculate(
+        file_path=art,
+        inputs={"B2": 20},
+        output_cells=["D2"],
+        sheet_name="Sales",
+    )
+    assert result["status"] == "success"
+    # 20 * 5.50 = 110
+    assert result["results"]["D2"] == pytest.approx(110.0)
+
+
+@pytest.mark.asyncio
+async def test_export_sheet_to_json_artifact(sample_workbook):
+    art = _make_artifact(sample_workbook)
+    result = await export_sheet_to_json(file_path=art, sheet_name="Sales")
+    assert result["status"] == "success"
+    assert result["file"] == "test.xlsx"
+    assert result["row_count"] >= 3
+
+
+@pytest.mark.asyncio
+async def test_diff_workbooks_artifact(sample_workbook, empty_workbook):
+    art_a = _make_artifact(sample_workbook)
+    art_b = _make_artifact(empty_workbook)
+    result = await diff_workbooks(file_a=art_a, file_b=art_b)
+    assert result["status"] == "success"
+    assert result["diff_count"] > 0
+    assert result["file_a"] == "test.xlsx"
+    assert result["file_b"] == "empty.xlsx"
+
+
+@pytest.mark.asyncio
+async def test_schedule_rejects_artifact(sample_workbook):
+    art = _make_artifact(sample_workbook)
+    result = await schedule_recalculation(file_path=art)
+    assert result["status"] == "error"
+    assert "filesystem path" in result["message"]

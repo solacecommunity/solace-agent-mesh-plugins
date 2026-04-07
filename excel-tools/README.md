@@ -49,7 +49,7 @@ This is especially useful for agents that need to:
 
 ## Configuration
 
-No additional environment variables are required beyond the standard SAM configuration. The plugin works with local `.xlsx` files accessible from the agent's filesystem.
+No additional environment variables are required beyond the standard SAM configuration. The plugin works with local `.xlsx` files accessible from the agent's filesystem, as well as files uploaded through the SAM UI (artifacts).
 
 ### Configuration File (`config.yaml`)
 
@@ -164,7 +164,20 @@ To contribute to this plugin review [Contributing](/CONTRIBUTING.md)
 
 ---
 
+## Examples
+
+The `examples/` directory contains:
+
+- **`sample_sales_dashboard.xlsx`** — A multi-sheet workbook with sales data, expense tracking, and financial projections, all with formulas. Use this to test all the tools.
+- **`PROMPTS.md`** — Sample prompts you can copy-paste to try out the agent with the sample workbook.
+
 ## Changelog
+
+### Version 0.3.0
+- Added artifact support: tools now accept uploaded Excel files from the SAM UI (artifact references are automatically resolved).
+- Added `artifact_args` declarations in `config.yaml` so the SAM framework pre-loads uploaded files for each tool.
+- Added `examples/` directory with a sample workbook and prompt guide.
+- Added 9 artifact-specific tests.
 
 ### Version 0.2.0
 - Added scheduled recalculation (cron jobs): `schedule_recalculation`, `list_scheduled_jobs`, `cancel_scheduled_job`.

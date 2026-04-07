@@ -5,7 +5,7 @@ through Solace Agent Mesh.  Includes scheduled recalculation (cron jobs),
 batch scenario analysis, template stamping, workbook diffing, and more.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __author__ = "Raphael Caillon"
 
 from .tools import (

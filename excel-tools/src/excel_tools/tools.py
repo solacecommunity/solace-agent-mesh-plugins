@@ -11,6 +11,7 @@ Dependencies:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import copy
 import json
 import logging
@@ -21,17 +22,61 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from io import BytesIO
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import formulas
 import openpyxl
 from openpyxl.utils import get_column_letter
+
+try:
+    from solace_agent_mesh.agent.tools import Artifact
+except ImportError:  # allow standalone / test usage without SAM installed
+    Artifact = None  # type: ignore[assignment,misc]
 
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+def _is_artifact(obj: Any) -> bool:
+    """Return True when *obj* is a SAM Artifact instance."""
+    if Artifact is not None and isinstance(obj, Artifact):
+        return True
+    # Duck-type fallback: any object with `.as_bytes()` and `.filename`
+    return hasattr(obj, "as_bytes") and hasattr(obj, "filename")
+
+
+@contextlib.contextmanager
+def _resolve_file(file_input: Any):
+    """Context manager that yields a filesystem path for *file_input*.
+
+    *file_input* may be:
+    - A plain ``str`` path — yielded as-is.
+    - A SAM ``Artifact`` object — its bytes are written to a temp file
+      whose path is yielded; the temp file is cleaned up on exit.
+    """
+    if isinstance(file_input, str):
+        yield file_input
+        return
+
+    if _is_artifact(file_input):
+        data = file_input.as_bytes()
+        suffix = os.path.splitext(file_input.filename)[1] or ".xlsx"
+        fd, tmp = tempfile.mkstemp(suffix=suffix)
+        try:
+            os.write(fd, data)
+            os.close(fd)
+            yield tmp
+        finally:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp)
+        return
+
+    raise TypeError(
+        f"file_path must be a string path or an Artifact, got {type(file_input).__name__}"
+    )
+
 
 def _open_workbook(
     file_path: str,
@@ -99,16 +144,17 @@ async def list_sheets(
     """List all sheet names in an Excel workbook.
 
     Args:
-        file_path: Absolute path to the .xlsx file.
+        file_path: Path or artifact reference to the .xlsx file.
     """
     log.info("[ExcelTools:list_sheets] Opening %s", file_path)
     try:
-        wb = _open_workbook(file_path)
-        sheets = _sheet_names(wb)
-        wb.close()
+        with _resolve_file(file_path) as resolved:
+            wb = _open_workbook(resolved)
+            sheets = _sheet_names(wb)
+            wb.close()
         return {
             "status": "success",
-            "file": file_path,
+            "file": getattr(file_path, "filename", file_path),
             "sheets": sheets,
             "sheet_count": len(sheets),
         }
@@ -133,7 +179,7 @@ async def read_range(
     """Read cell values (and optionally formulas) from an Excel range.
 
     Args:
-        file_path: Absolute path to the .xlsx file.
+        file_path: Path or artifact reference to the .xlsx file.
         sheet_name: Sheet to read. Defaults to the active sheet.
         range_address: Excel range like 'A1:D10'. If omitted, reads the
             entire used range (up to *max_rows* rows).
@@ -143,48 +189,50 @@ async def read_range(
     """
     log.info("[ExcelTools:read_range] %s sheet=%s range=%s", file_path, sheet_name, range_address)
     try:
-        wb_values = _open_workbook(file_path, data_only=True)
-        ws_values = wb_values[sheet_name] if sheet_name else wb_values.active
+        with _resolve_file(file_path) as resolved:
+            wb_values = _open_workbook(resolved, data_only=True)
+            ws_values = wb_values[sheet_name] if sheet_name else wb_values.active
 
-        wb_formulas = None
-        ws_formulas = None
-        if include_formulas:
-            wb_formulas = _open_workbook(file_path, data_only=False)
-            ws_formulas = wb_formulas[sheet_name] if sheet_name else wb_formulas.active
+            wb_formulas = None
+            ws_formulas = None
+            if include_formulas:
+                wb_formulas = _open_workbook(resolved, data_only=False)
+                ws_formulas = wb_formulas[sheet_name] if sheet_name else wb_formulas.active
 
-        if range_address:
-            cells = ws_values[range_address]
-        else:
-            cells = ws_values.iter_rows(
-                min_row=ws_values.min_row,
-                max_row=min(ws_values.max_row or 1, (ws_values.min_row or 1) + max_rows - 1),
-                min_col=ws_values.min_column,
-                max_col=ws_values.max_column,
-            )
+            if range_address:
+                cells = ws_values[range_address]
+            else:
+                cells = ws_values.iter_rows(
+                    min_row=ws_values.min_row,
+                    max_row=min(ws_values.max_row or 1, (ws_values.min_row or 1) + max_rows - 1),
+                    min_col=ws_values.min_column,
+                    max_col=ws_values.max_column,
+                )
 
-        rows: List[List[Any]] = []
-        formula_rows: List[List[Any]] = []
-        for row in cells:
-            # openpyxl returns a tuple for a single-cell range
-            if not hasattr(row, "__iter__"):
-                row = (row,)
-            rows.append([_serialize_cell(c) for c in row])
-            if include_formulas and ws_formulas:
-                f_row = []
-                for c in row:
-                    fc = ws_formulas.cell(row=c.row, column=c.column)
-                    val = fc.value
-                    f_row.append(val if isinstance(val, str) and val.startswith("=") else None)
-                formula_rows.append(f_row)
+            rows: List[List[Any]] = []
+            formula_rows: List[List[Any]] = []
+            for row in cells:
+                # openpyxl returns a tuple for a single-cell range
+                if not hasattr(row, "__iter__"):
+                    row = (row,)
+                rows.append([_serialize_cell(c) for c in row])
+                if include_formulas and ws_formulas:
+                    f_row = []
+                    for c in row:
+                        fc = ws_formulas.cell(row=c.row, column=c.column)
+                        val = fc.value
+                        f_row.append(val if isinstance(val, str) and val.startswith("=") else None)
+                    formula_rows.append(f_row)
 
-        wb_values.close()
-        if wb_formulas:
-            wb_formulas.close()
+            sheet_title = sheet_name or ws_values.title
+            wb_values.close()
+            if wb_formulas:
+                wb_formulas.close()
 
         result: Dict[str, Any] = {
             "status": "success",
-            "file": file_path,
-            "sheet": sheet_name or ws_values.title,
+            "file": getattr(file_path, "filename", file_path),
+            "sheet": sheet_title,
             "rows": rows,
             "row_count": len(rows),
         }
@@ -213,39 +261,41 @@ async def get_formulas(
     Returns a mapping of cell references to their formula strings.
 
     Args:
-        file_path: Absolute path to the .xlsx file.
+        file_path: Path or artifact reference to the .xlsx file.
         sheet_name: Sheet to inspect. Defaults to the active sheet.
         range_address: Optional range like 'A1:D10'. If omitted, scans
             the entire used range.
     """
     log.info("[ExcelTools:get_formulas] %s sheet=%s range=%s", file_path, sheet_name, range_address)
     try:
-        wb = _open_workbook(file_path, data_only=False)
-        ws = wb[sheet_name] if sheet_name else wb.active
+        with _resolve_file(file_path) as resolved:
+            wb = _open_workbook(resolved, data_only=False)
+            ws = wb[sheet_name] if sheet_name else wb.active
 
-        if range_address:
-            cells = ws[range_address]
-        else:
-            cells = ws.iter_rows(
-                min_row=ws.min_row,
-                max_row=ws.max_row,
-                min_col=ws.min_column,
-                max_col=ws.max_column,
-            )
+            if range_address:
+                cells = ws[range_address]
+            else:
+                cells = ws.iter_rows(
+                    min_row=ws.min_row,
+                    max_row=ws.max_row,
+                    min_col=ws.min_column,
+                    max_col=ws.max_column,
+                )
 
-        formulas_map: Dict[str, str] = {}
-        for row in cells:
-            if not hasattr(row, "__iter__"):
-                row = (row,)
-            for cell in row:
-                if isinstance(cell.value, str) and cell.value.startswith("="):
-                    formulas_map[_cell_ref(cell.row, cell.column)] = cell.value
+            formulas_map: Dict[str, str] = {}
+            for row in cells:
+                if not hasattr(row, "__iter__"):
+                    row = (row,)
+                for cell in row:
+                    if isinstance(cell.value, str) and cell.value.startswith("="):
+                        formulas_map[_cell_ref(cell.row, cell.column)] = cell.value
 
-        wb.close()
+            sheet_title = sheet_name or ws.title
+            wb.close()
         return {
             "status": "success",
-            "file": file_path,
-            "sheet": sheet_name or ws.title,
+            "file": getattr(file_path, "filename", file_path),
+            "sheet": sheet_title,
             "formulas": formulas_map,
             "formula_count": len(formulas_map),
         }
@@ -272,7 +322,7 @@ async def evaluate_formulas(
     data present in the file — no Excel installation required.
 
     Args:
-        file_path: Absolute path to the .xlsx file.
+        file_path: Path or artifact reference to the .xlsx file.
         cells: Optional list of cell references to evaluate
             (e.g. ``["C2", "D5"]``).  If omitted, all formulas in the
             target sheet are evaluated.
@@ -281,8 +331,9 @@ async def evaluate_formulas(
     """
     log.info("[ExcelTools:evaluate_formulas] %s cells=%s", file_path, cells)
     try:
-        xl_model = formulas.ExcelModel().loads(file_path).finish()
-        solution = xl_model.calculate()
+        with _resolve_file(file_path) as resolved:
+            xl_model = formulas.ExcelModel().loads(resolved).finish()
+            solution = xl_model.calculate()
 
         results: Dict[str, Any] = {}
         target_sheet = sheet_name
@@ -310,7 +361,7 @@ async def evaluate_formulas(
 
         return {
             "status": "success",
-            "file": file_path,
+            "file": getattr(file_path, "filename", file_path),
             "sheet": target_sheet,
             "results": results,
             "evaluated_count": len(results),
@@ -338,7 +389,7 @@ async def recalculate(
     then re-evaluate all formulas and return the updated outputs.
 
     Args:
-        file_path: Absolute path to the .xlsx file.
+        file_path: Path or artifact reference to the .xlsx file.
         inputs: Mapping of cell references to new values,
             e.g. ``{"B2": 100, "B3": 200}``.  Cell references may
             optionally include the sheet name (``"'Sheet1'!B2"``).
@@ -353,31 +404,32 @@ async def recalculate(
         return {"status": "error", "message": "inputs parameter is required"}
 
     try:
-        xl_model = formulas.ExcelModel().loads(file_path).finish()
+        with _resolve_file(file_path) as resolved:
+            xl_model = formulas.ExcelModel().loads(resolved).finish()
 
-        # The formulas library uses keys like "'[filename]SHEETNAME'!CELL"
-        filename = os.path.basename(file_path)
-        wb = _open_workbook(file_path)
-        default_sheet = sheet_name or wb.sheetnames[0]
-        wb.close()
+            # The formulas library uses keys like "'[filename]SHEETNAME'!CELL"
+            fname = os.path.basename(resolved)
+            wb = _open_workbook(resolved)
+            default_sheet = sheet_name or wb.sheetnames[0]
+            wb.close()
 
-        qualified_inputs = {}
-        for ref, val in inputs.items():
-            if "!" in ref:
-                # User provided sheet-qualified ref; ensure filename prefix
-                if "[" not in ref:
-                    parts = ref.split("!")
-                    s = parts[0].strip("'\"").upper()
-                    c = parts[1].upper()
-                    qualified_inputs[f"'[{filename}]{s}'!{c}"] = val
+            qualified_inputs = {}
+            for ref, val in inputs.items():
+                if "!" in ref:
+                    # User provided sheet-qualified ref; ensure filename prefix
+                    if "[" not in ref:
+                        parts = ref.split("!")
+                        s = parts[0].strip("'\"").upper()
+                        c = parts[1].upper()
+                        qualified_inputs[f"'[{fname}]{s}'!{c}"] = val
+                    else:
+                        qualified_inputs[ref] = val
                 else:
-                    qualified_inputs[ref] = val
-            else:
-                qualified_inputs[
-                    f"'[{filename}]{default_sheet.upper()}'!{ref.upper()}"
-                ] = val
+                    qualified_inputs[
+                        f"'[{fname}]{default_sheet.upper()}'!{ref.upper()}"
+                    ] = val
 
-        solution = xl_model.calculate(inputs=qualified_inputs)
+            solution = xl_model.calculate(inputs=qualified_inputs)
 
         results: Dict[str, Any] = {}
         for key, value in solution.items():
@@ -393,7 +445,7 @@ async def recalculate(
 
         return {
             "status": "success",
-            "file": file_path,
+            "file": getattr(file_path, "filename", file_path),
             "inputs_applied": inputs,
             "results": results,
             "evaluated_count": len(results),
@@ -419,72 +471,74 @@ async def analyze_sheet(
     formula locations, and basic statistics for numeric columns.
 
     Args:
-        file_path: Absolute path to the .xlsx file.
+        file_path: Path or artifact reference to the .xlsx file.
         sheet_name: Sheet to analyze. Defaults to the active sheet.
     """
     log.info("[ExcelTools:analyze_sheet] %s sheet=%s", file_path, sheet_name)
     try:
-        wb_vals = _open_workbook(file_path, data_only=True)
-        ws_vals = wb_vals[sheet_name] if sheet_name else wb_vals.active
+        with _resolve_file(file_path) as resolved:
+            wb_vals = _open_workbook(resolved, data_only=True)
+            ws_vals = wb_vals[sheet_name] if sheet_name else wb_vals.active
 
-        wb_fmls = _open_workbook(file_path, data_only=False)
-        ws_fmls = wb_fmls[sheet_name] if sheet_name else wb_fmls.active
+            wb_fmls = _open_workbook(resolved, data_only=False)
+            ws_fmls = wb_fmls[sheet_name] if sheet_name else wb_fmls.active
 
-        min_r, max_r = ws_vals.min_row or 1, ws_vals.max_row or 1
-        min_c, max_c = ws_vals.min_column or 1, ws_vals.max_column or 1
+            min_r, max_r = ws_vals.min_row or 1, ws_vals.max_row or 1
+            min_c, max_c = ws_vals.min_column or 1, ws_vals.max_column or 1
 
-        # Headers (first row)
-        headers = []
-        for col in range(min_c, max_c + 1):
-            val = ws_vals.cell(row=min_r, column=col).value
-            headers.append(str(val) if val is not None else f"Col{col}")
+            # Headers (first row)
+            headers = []
+            for col in range(min_c, max_c + 1):
+                val = ws_vals.cell(row=min_r, column=col).value
+                headers.append(str(val) if val is not None else f"Col{col}")
 
-        # Per-column info
-        columns_info = []
-        for ci, col in enumerate(range(min_c, max_c + 1)):
-            nums = []
-            types_seen = set()
-            formula_count = 0
-            for row in range(min_r + 1, max_r + 1):
-                v = ws_vals.cell(row=row, column=col).value
-                fv = ws_fmls.cell(row=row, column=col).value
-                if isinstance(fv, str) and fv.startswith("="):
-                    formula_count += 1
-                if v is not None:
-                    types_seen.add(type(v).__name__)
-                    if isinstance(v, (int, float)):
-                        nums.append(v)
+            # Per-column info
+            columns_info = []
+            for ci, col in enumerate(range(min_c, max_c + 1)):
+                nums = []
+                types_seen = set()
+                formula_count = 0
+                for row in range(min_r + 1, max_r + 1):
+                    v = ws_vals.cell(row=row, column=col).value
+                    fv = ws_fmls.cell(row=row, column=col).value
+                    if isinstance(fv, str) and fv.startswith("="):
+                        formula_count += 1
+                    if v is not None:
+                        types_seen.add(type(v).__name__)
+                        if isinstance(v, (int, float)):
+                            nums.append(v)
 
-            info: Dict[str, Any] = {
-                "header": headers[ci],
-                "column_letter": get_column_letter(col),
-                "data_types": sorted(types_seen),
-                "formula_count": formula_count,
-            }
-            if nums:
-                info["numeric_stats"] = {
-                    "count": len(nums),
-                    "min": min(nums),
-                    "max": max(nums),
-                    "sum": round(sum(nums), 6),
-                    "average": round(sum(nums) / len(nums), 6),
+                info: Dict[str, Any] = {
+                    "header": headers[ci],
+                    "column_letter": get_column_letter(col),
+                    "data_types": sorted(types_seen),
+                    "formula_count": formula_count,
                 }
-            columns_info.append(info)
+                if nums:
+                    info["numeric_stats"] = {
+                        "count": len(nums),
+                        "min": min(nums),
+                        "max": max(nums),
+                        "sum": round(sum(nums), 6),
+                        "average": round(sum(nums) / len(nums), 6),
+                    }
+                columns_info.append(info)
 
-        # Collect all formula locations
-        all_formulas: Dict[str, str] = {}
-        for row in ws_fmls.iter_rows(min_row=min_r, max_row=max_r, min_col=min_c, max_col=max_c):
-            for cell in row:
-                if isinstance(cell.value, str) and cell.value.startswith("="):
-                    all_formulas[_cell_ref(cell.row, cell.column)] = cell.value
+            # Collect all formula locations
+            all_formulas: Dict[str, str] = {}
+            for row in ws_fmls.iter_rows(min_row=min_r, max_row=max_r, min_col=min_c, max_col=max_c):
+                for cell in row:
+                    if isinstance(cell.value, str) and cell.value.startswith("="):
+                        all_formulas[_cell_ref(cell.row, cell.column)] = cell.value
 
-        wb_vals.close()
-        wb_fmls.close()
+            sheet_title = ws_vals.title
+            wb_vals.close()
+            wb_fmls.close()
 
         return {
             "status": "success",
-            "file": file_path,
-            "sheet": ws_vals.title,
+            "file": getattr(file_path, "filename", file_path),
+            "sheet": sheet_title,
             "dimensions": {
                 "rows": max_r - min_r + 1,
                 "columns": max_c - min_c + 1,
@@ -515,7 +569,7 @@ async def write_cells(
     """Write values or formulas to specific cells and save the workbook.
 
     Args:
-        file_path: Absolute path to the .xlsx file to modify.
+        file_path: Path or artifact reference to the .xlsx file to modify.
         updates: Mapping of cell references to values or formula strings,
             e.g. ``{"A1": "Name", "B2": 42, "C2": "=A2+B2"}``.
         sheet_name: Target sheet. Defaults to the active sheet.
@@ -527,17 +581,18 @@ async def write_cells(
         return {"status": "error", "message": "updates parameter is required"}
 
     try:
-        wb = _open_workbook(file_path, data_only=False)
-        ws = wb[sheet_name] if sheet_name else wb.active
+        with _resolve_file(file_path) as resolved:
+            wb = _open_workbook(resolved, data_only=False)
+            ws = wb[sheet_name] if sheet_name else wb.active
 
-        written = []
-        for ref, val in updates.items():
-            ws[ref] = val
-            written.append(ref)
+            written = []
+            for ref, val in updates.items():
+                ws[ref] = val
+                written.append(ref)
 
-        out_path = save_as or file_path
-        wb.save(out_path)
-        wb.close()
+            out_path = save_as or resolved
+            wb.save(out_path)
+            wb.close()
 
         return {
             "status": "success",
@@ -710,6 +765,12 @@ async def schedule_recalculation(
         "[ExcelTools:schedule_recalculation] %s every %ds",
         file_path, interval_seconds,
     )
+    if _is_artifact(file_path):
+        return {
+            "status": "error",
+            "message": "schedule_recalculation requires a filesystem path, not an artifact. "
+                       "Save the workbook to disk first, then schedule it.",
+        }
     if not os.path.isfile(file_path):
         return {"status": "error", "message": f"File not found: {file_path}"}
     if interval_seconds < 10:
@@ -837,7 +898,7 @@ async def batch_recalculate(
     ideal for sensitivity analysis, pricing tiers, or Monte Carlo inputs.
 
     Args:
-        file_path: Absolute path to the .xlsx file.
+        file_path: Path or artifact reference to the .xlsx file.
         scenarios: List of scenario dicts.  Each dict has:
             - ``name`` (str, optional): A label for the scenario.
             - ``inputs`` (dict): Cell-to-value mapping, same as *recalculate*.
@@ -856,26 +917,28 @@ async def batch_recalculate(
     if not scenarios:
         return {"status": "error", "message": "scenarios parameter is required (list of dicts)"}
 
-    results = []
-    for idx, scenario in enumerate(scenarios):
-        name = scenario.get("name", f"scenario_{idx + 1}")
-        inputs = scenario.get("inputs")
-        if not inputs:
-            results.append({"name": name, "status": "error", "message": "scenario missing 'inputs'"})
-            continue
+    # Resolve the file once for all scenarios
+    with _resolve_file(file_path) as resolved:
+        results = []
+        for idx, scenario in enumerate(scenarios):
+            name = scenario.get("name", f"scenario_{idx + 1}")
+            inputs = scenario.get("inputs")
+            if not inputs:
+                results.append({"name": name, "status": "error", "message": "scenario missing 'inputs'"})
+                continue
 
-        r = await recalculate(
-            file_path=file_path,
-            inputs=inputs,
-            output_cells=output_cells,
-            sheet_name=sheet_name,
-        )
-        r["name"] = name
-        results.append(r)
+            r = await recalculate(
+                file_path=resolved,
+                inputs=inputs,
+                output_cells=output_cells,
+                sheet_name=sheet_name,
+            )
+            r["name"] = name
+            results.append(r)
 
     return {
         "status": "success",
-        "file": file_path,
+        "file": getattr(file_path, "filename", file_path),
         "scenario_count": len(results),
         "scenarios": results,
     }
@@ -896,7 +959,7 @@ async def copy_sheet(
     """Duplicate a sheet within the same workbook or into another file.
 
     Args:
-        file_path: Source workbook path.
+        file_path: Path or artifact reference to the source workbook.
         source_sheet: Name of the sheet to copy.
         new_sheet_name: Name for the new sheet.
         target_file: If provided, the copy is placed in this workbook
@@ -907,42 +970,43 @@ async def copy_sheet(
         file_path, source_sheet, new_sheet_name, target_file,
     )
     try:
-        wb_src = _open_workbook(file_path, data_only=False)
-        if source_sheet not in wb_src.sheetnames:
-            wb_src.close()
-            return {"status": "error", "message": f"Sheet '{source_sheet}' not found"}
+        with _resolve_file(file_path) as resolved:
+            wb_src = _open_workbook(resolved, data_only=False)
+            if source_sheet not in wb_src.sheetnames:
+                wb_src.close()
+                return {"status": "error", "message": f"Sheet '{source_sheet}' not found"}
 
-        if target_file and target_file != file_path:
-            # Cross-workbook copy
-            if os.path.isfile(target_file):
-                wb_dst = openpyxl.load_workbook(target_file)
+            if target_file and target_file != resolved:
+                # Cross-workbook copy
+                if os.path.isfile(target_file):
+                    wb_dst = openpyxl.load_workbook(target_file)
+                else:
+                    wb_dst = openpyxl.Workbook()
+                    # Remove the default empty sheet if we're creating fresh
+                    if "Sheet" in wb_dst.sheetnames and len(wb_dst.sheetnames) == 1:
+                        del wb_dst["Sheet"]
+
+                ws_src = wb_src[source_sheet]
+                ws_dst = wb_dst.create_sheet(new_sheet_name)
+
+                for row in ws_src.iter_rows():
+                    for cell in row:
+                        ws_dst.cell(
+                            row=cell.row, column=cell.column, value=cell.value
+                        )
+
+                wb_dst.save(target_file)
+                wb_dst.close()
+                wb_src.close()
+                out = target_file
             else:
-                wb_dst = openpyxl.Workbook()
-                # Remove the default empty sheet if we're creating fresh
-                if "Sheet" in wb_dst.sheetnames and len(wb_dst.sheetnames) == 1:
-                    del wb_dst["Sheet"]
-
-            ws_src = wb_src[source_sheet]
-            ws_dst = wb_dst.create_sheet(new_sheet_name)
-
-            for row in ws_src.iter_rows():
-                for cell in row:
-                    ws_dst.cell(
-                        row=cell.row, column=cell.column, value=cell.value
-                    )
-
-            wb_dst.save(target_file)
-            wb_dst.close()
-            wb_src.close()
-            out = target_file
-        else:
-            # Same-workbook copy
-            ws_src = wb_src[source_sheet]
-            ws_new = wb_src.copy_worksheet(ws_src)
-            ws_new.title = new_sheet_name
-            wb_src.save(file_path)
-            wb_src.close()
-            out = file_path
+                # Same-workbook copy
+                ws_src = wb_src[source_sheet]
+                ws_new = wb_src.copy_worksheet(ws_src)
+                ws_new.title = new_sheet_name
+                wb_src.save(resolved)
+                wb_src.close()
+                out = resolved
 
         return {
             "status": "success",
@@ -974,7 +1038,7 @@ async def apply_template(
     recalculate when opened in Excel (or via ``evaluate_formulas``).
 
     Args:
-        template_path: Path to the template .xlsx file (not modified).
+        template_path: Path or artifact reference to the template .xlsx file (not modified).
         output_path: Where to save the filled copy.
         values: Cell-to-value mapping, e.g. ``{"B2": "Acme Corp", "C5": 42000}``.
         sheet_name: Target sheet. Defaults to the active sheet.
@@ -982,11 +1046,11 @@ async def apply_template(
     log.info("[ExcelTools:apply_template] %s -> %s", template_path, output_path)
     if not values:
         return {"status": "error", "message": "values parameter is required"}
-    if not os.path.isfile(template_path):
-        return {"status": "error", "message": f"Template not found: {template_path}"}
 
     try:
-        shutil.copy2(template_path, output_path)
+        with _resolve_file(template_path) as resolved:
+            shutil.copy2(resolved, output_path)
+
         wb = openpyxl.load_workbook(output_path)
         ws = wb[sheet_name] if sheet_name else wb.active
 
@@ -1000,7 +1064,7 @@ async def apply_template(
 
         return {
             "status": "success",
-            "template": template_path,
+            "template": getattr(template_path, "filename", template_path),
             "output": output_path,
             "cells_written": written,
             "count": len(written),
@@ -1027,42 +1091,44 @@ async def diff_workbooks(
     first sheet in each workbook.
 
     Args:
-        file_a: Path to the first workbook.
-        file_b: Path to the second workbook.
+        file_a: Path or artifact reference to the first workbook.
+        file_b: Path or artifact reference to the second workbook.
         sheet_name: Sheet to compare. Defaults to the first sheet.
     """
     log.info("[ExcelTools:diff_workbooks] %s vs %s", file_a, file_b)
     try:
-        wb_a = _open_workbook(file_a, data_only=True)
-        wb_b = _open_workbook(file_b, data_only=True)
+        with _resolve_file(file_a) as resolved_a, _resolve_file(file_b) as resolved_b:
+            wb_a = _open_workbook(resolved_a, data_only=True)
+            wb_b = _open_workbook(resolved_b, data_only=True)
 
-        ws_a = wb_a[sheet_name] if sheet_name else wb_a.active
-        ws_b = wb_b[sheet_name] if sheet_name else wb_b.active
+            ws_a = wb_a[sheet_name] if sheet_name else wb_a.active
+            ws_b = wb_b[sheet_name] if sheet_name else wb_b.active
 
-        max_row = max(ws_a.max_row or 1, ws_b.max_row or 1)
-        max_col = max(ws_a.max_column or 1, ws_b.max_column or 1)
+            max_row = max(ws_a.max_row or 1, ws_b.max_row or 1)
+            max_col = max(ws_a.max_column or 1, ws_b.max_column or 1)
 
-        diffs: List[Dict[str, Any]] = []
-        for r in range(1, max_row + 1):
-            for c in range(1, max_col + 1):
-                va = ws_a.cell(row=r, column=c).value
-                vb = ws_b.cell(row=r, column=c).value
-                if va != vb:
-                    ref = _cell_ref(r, c)
-                    diffs.append({
-                        "cell": ref,
-                        "file_a": _safe_serialize(va),
-                        "file_b": _safe_serialize(vb),
-                    })
+            diffs: List[Dict[str, Any]] = []
+            for r in range(1, max_row + 1):
+                for c in range(1, max_col + 1):
+                    va = ws_a.cell(row=r, column=c).value
+                    vb = ws_b.cell(row=r, column=c).value
+                    if va != vb:
+                        ref = _cell_ref(r, c)
+                        diffs.append({
+                            "cell": ref,
+                            "file_a": _safe_serialize(va),
+                            "file_b": _safe_serialize(vb),
+                        })
 
-        wb_a.close()
-        wb_b.close()
+            sheet_title = sheet_name or ws_a.title
+            wb_a.close()
+            wb_b.close()
 
         return {
             "status": "success",
-            "file_a": file_a,
-            "file_b": file_b,
-            "sheet": sheet_name or ws_a.title,
+            "file_a": getattr(file_a, "filename", file_a),
+            "file_b": getattr(file_b, "filename", file_b),
+            "sheet": sheet_title,
             "differences": diffs,
             "diff_count": len(diffs),
             "identical": len(diffs) == 0,
@@ -1099,81 +1165,83 @@ async def validate_formulas(
     outside the used range (potential dangling references).
 
     Args:
-        file_path: Absolute path to the .xlsx file.
+        file_path: Path or artifact reference to the .xlsx file.
         sheet_name: Sheet to validate. Defaults to the active sheet.
     """
     log.info("[ExcelTools:validate_formulas] %s sheet=%s", file_path, sheet_name)
     try:
-        # Get formulas
-        wb_fml = _open_workbook(file_path, data_only=False)
-        ws_fml = wb_fml[sheet_name] if sheet_name else wb_fml.active
+        with _resolve_file(file_path) as resolved:
+            # Get formulas
+            wb_fml = _open_workbook(resolved, data_only=False)
+            ws_fml = wb_fml[sheet_name] if sheet_name else wb_fml.active
 
-        # Get cached values
-        wb_val = _open_workbook(file_path, data_only=True)
-        ws_val = wb_val[sheet_name] if sheet_name else wb_val.active
+            # Get cached values
+            wb_val = _open_workbook(resolved, data_only=True)
+            ws_val = wb_val[sheet_name] if sheet_name else wb_val.active
 
-        used_max_row = ws_fml.max_row or 1
-        used_max_col = ws_fml.max_column or 1
+            used_max_row = ws_fml.max_row or 1
+            used_max_col = ws_fml.max_column or 1
 
-        error_tokens = {"#REF!", "#DIV/0!", "#NAME?", "#VALUE!", "#N/A", "#NULL!", "#NUM!"}
+            error_tokens = {"#REF!", "#DIV/0!", "#NAME?", "#VALUE!", "#N/A", "#NULL!", "#NUM!"}
 
-        issues: List[Dict[str, Any]] = []
-        formula_count = 0
+            issues: List[Dict[str, Any]] = []
+            formula_count = 0
 
-        for row in ws_fml.iter_rows(
-            min_row=ws_fml.min_row or 1,
-            max_row=used_max_row,
-            min_col=ws_fml.min_column or 1,
-            max_col=used_max_col,
-        ):
-            for cell in row:
-                if not isinstance(cell.value, str) or not cell.value.startswith("="):
-                    continue
-                formula_count += 1
-                ref = _cell_ref(cell.row, cell.column)
+            for row in ws_fml.iter_rows(
+                min_row=ws_fml.min_row or 1,
+                max_row=used_max_row,
+                min_col=ws_fml.min_column or 1,
+                max_col=used_max_col,
+            ):
+                for cell in row:
+                    if not isinstance(cell.value, str) or not cell.value.startswith("="):
+                        continue
+                    formula_count += 1
+                    ref = _cell_ref(cell.row, cell.column)
 
-                # Check cached value for error tokens
-                cached = ws_val.cell(row=cell.row, column=cell.column).value
-                if isinstance(cached, str) and cached.strip() in error_tokens:
-                    issues.append({
-                        "cell": ref,
-                        "formula": cell.value,
-                        "error": cached.strip(),
-                        "severity": "error",
-                    })
-
-        # Try full evaluation to catch runtime errors
-        try:
-            xl_model = formulas.ExcelModel().loads(file_path).finish()
-            solution = xl_model.calculate()
-            for key, value in solution.items():
-                val = _unwrap_value(value)
-                if isinstance(val, str) and val.strip() in error_tokens:
-                    parts = str(key).split("!")
-                    cell_addr = parts[1] if len(parts) == 2 else str(key)
-                    # Avoid duplicates
-                    if not any(i["cell"] == cell_addr for i in issues):
+                    # Check cached value for error tokens
+                    cached = ws_val.cell(row=cell.row, column=cell.column).value
+                    if isinstance(cached, str) and cached.strip() in error_tokens:
                         issues.append({
-                            "cell": cell_addr,
-                            "formula": None,
-                            "error": val.strip(),
+                            "cell": ref,
+                            "formula": cell.value,
+                            "error": cached.strip(),
                             "severity": "error",
                         })
-        except Exception as eval_exc:
-            issues.append({
-                "cell": "N/A",
-                "formula": None,
-                "error": f"Evaluation engine error: {eval_exc}",
-                "severity": "warning",
-            })
 
-        wb_fml.close()
-        wb_val.close()
+            # Try full evaluation to catch runtime errors
+            try:
+                xl_model = formulas.ExcelModel().loads(resolved).finish()
+                solution = xl_model.calculate()
+                for key, value in solution.items():
+                    val = _unwrap_value(value)
+                    if isinstance(val, str) and val.strip() in error_tokens:
+                        parts = str(key).split("!")
+                        cell_addr = parts[1] if len(parts) == 2 else str(key)
+                        # Avoid duplicates
+                        if not any(i["cell"] == cell_addr for i in issues):
+                            issues.append({
+                                "cell": cell_addr,
+                                "formula": None,
+                                "error": val.strip(),
+                                "severity": "error",
+                            })
+            except Exception as eval_exc:
+                issues.append({
+                    "cell": "N/A",
+                    "formula": None,
+                    "error": f"Evaluation engine error: {eval_exc}",
+                    "severity": "warning",
+                })
+
+            sheet_title = sheet_name or ws_fml.title
+            wb_fml.close()
+            wb_val.close()
 
         return {
             "status": "success",
-            "file": file_path,
-            "sheet": sheet_name or ws_fml.title,
+            "file": getattr(file_path, "filename", file_path),
+            "sheet": sheet_title,
             "formulas_checked": formula_count,
             "issues": issues,
             "issue_count": len(issues),
@@ -1203,7 +1271,7 @@ async def export_sheet_to_json(
     the data as a JSON structure.  The first row is treated as headers.
 
     Args:
-        file_path: Absolute path to the .xlsx file.
+        file_path: Path or artifact reference to the .xlsx file.
         sheet_name: Sheet to export. Defaults to the active sheet.
         output_path: If provided, the JSON is written to this file.
         orient: Output format:
@@ -1214,29 +1282,31 @@ async def export_sheet_to_json(
     """
     log.info("[ExcelTools:export_sheet_to_json] %s orient=%s", file_path, orient)
     try:
-        wb = _open_workbook(file_path, data_only=True)
-        ws = wb[sheet_name] if sheet_name else wb.active
+        with _resolve_file(file_path) as resolved:
+            wb = _open_workbook(resolved, data_only=True)
+            ws = wb[sheet_name] if sheet_name else wb.active
 
-        min_r = ws.min_row or 1
-        max_r = min(ws.max_row or 1, min_r + max_rows)
-        min_c = ws.min_column or 1
-        max_c = ws.max_column or 1
+            min_r = ws.min_row or 1
+            max_r = min(ws.max_row or 1, min_r + max_rows)
+            min_c = ws.min_column or 1
+            max_c = ws.max_column or 1
 
-        # Read headers from first row
-        headers = []
-        for c in range(min_c, max_c + 1):
-            v = ws.cell(row=min_r, column=c).value
-            headers.append(str(v) if v is not None else f"col_{c}")
-
-        # Read data rows
-        data_rows = []
-        for r in range(min_r + 1, max_r + 1):
-            row_vals = []
+            # Read headers from first row
+            headers = []
             for c in range(min_c, max_c + 1):
-                row_vals.append(_safe_serialize(ws.cell(row=r, column=c).value))
-            data_rows.append(row_vals)
+                v = ws.cell(row=min_r, column=c).value
+                headers.append(str(v) if v is not None else f"col_{c}")
 
-        wb.close()
+            # Read data rows
+            data_rows = []
+            for r in range(min_r + 1, max_r + 1):
+                row_vals = []
+                for c in range(min_c, max_c + 1):
+                    row_vals.append(_safe_serialize(ws.cell(row=r, column=c).value))
+                data_rows.append(row_vals)
+
+            sheet_title = sheet_name or ws.title
+            wb.close()
 
         # Format output
         if orient == "records":
@@ -1257,8 +1327,8 @@ async def export_sheet_to_json(
 
         return {
             "status": "success",
-            "file": file_path,
-            "sheet": sheet_name or ws.title,
+            "file": getattr(file_path, "filename", file_path),
+            "sheet": sheet_title,
             "orient": orient,
             "row_count": len(data_rows),
             "data": output,
@@ -1287,7 +1357,7 @@ async def snapshot_formulas(
     or sending a workbook to someone who should not see the formulas.
 
     Args:
-        file_path: Path to the source .xlsx file.
+        file_path: Path or artifact reference to the source .xlsx file.
         output_path: Where to save the snapshot.  If omitted, a
             ``_snapshot`` suffix is added to the original filename.
         sheet_name: Sheet to snapshot.  If omitted, all sheets are
@@ -1295,27 +1365,30 @@ async def snapshot_formulas(
     """
     log.info("[ExcelTools:snapshot_formulas] %s", file_path)
     try:
-        # Evaluate all formulas
-        xl_model = formulas.ExcelModel().loads(file_path).finish()
-        solution = xl_model.calculate()
+        with _resolve_file(file_path) as resolved:
+            # Evaluate all formulas
+            xl_model = formulas.ExcelModel().loads(resolved).finish()
+            solution = xl_model.calculate()
 
-        # Build a lookup: (sheet_upper, cell_upper) -> value
-        evaluated: Dict[tuple, Any] = {}
-        for key, value in solution.items():
-            parts = str(key).split("!")
-            if len(parts) == 2:
-                # Strip '[filename]' from sheet part
-                raw_sheet = parts[0].strip("'\"")
-                if "]" in raw_sheet:
-                    raw_sheet = raw_sheet.split("]", 1)[1]
-                evaluated[(raw_sheet.upper(), parts[1].upper())] = _unwrap_value(value)
+            # Build a lookup: (sheet_upper, cell_upper) -> value
+            evaluated: Dict[tuple, Any] = {}
+            for key, value in solution.items():
+                parts = str(key).split("!")
+                if len(parts) == 2:
+                    # Strip '[filename]' from sheet part
+                    raw_sheet = parts[0].strip("'\"")
+                    if "]" in raw_sheet:
+                        raw_sheet = raw_sheet.split("]", 1)[1]
+                    evaluated[(raw_sheet.upper(), parts[1].upper())] = _unwrap_value(value)
 
-        # Open the workbook (with formulas) and overwrite formula cells
-        if not output_path:
-            base, ext = os.path.splitext(file_path)
-            output_path = f"{base}_snapshot{ext}"
+            # Open the workbook (with formulas) and overwrite formula cells
+            if not output_path:
+                source_name = getattr(file_path, "filename", resolved)
+                base, ext = os.path.splitext(source_name)
+                output_path = f"{base}_snapshot{ext}"
 
-        shutil.copy2(file_path, output_path)
+            shutil.copy2(resolved, output_path)
+
         wb = openpyxl.load_workbook(output_path)
 
         sheets_to_process = [sheet_name] if sheet_name else wb.sheetnames
@@ -1336,7 +1409,7 @@ async def snapshot_formulas(
 
         return {
             "status": "success",
-            "source": file_path,
+            "source": getattr(file_path, "filename", file_path),
             "output": output_path,
             "formulas_replaced": replaced_count,
         }
