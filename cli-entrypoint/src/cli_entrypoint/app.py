@@ -76,7 +76,68 @@ class CliEntrypointApp(BaseGatewayApp):
                 "sam run configs/gateways/cli-entrypoint.yaml"
             )
             return
-        super()._initialize_flows()
+        try:
+            super()._initialize_flows()
+        except (ValueError, Exception) as exc:
+            friendly = self._get_friendly_broker_error(exc)
+            if friendly:
+                print(f"\n  Error: {friendly}\n")
+                sys.exit(1)
+            raise
+
+    def _get_friendly_broker_error(self, exc: Exception) -> str:
+        """Extract a user-friendly message from broker-related exceptions."""
+        # Walk the exception chain to find the root cause details
+        messages = []
+        current = exc
+        while current:
+            messages.append(str(current))
+            current = current.__cause__ or current.__context__
+
+        full_error = " ".join(messages)
+        gateway_id = self.app_info.get("app_config", {}).get(
+            "gateway_id", "unknown"
+        )
+        broker_url = self.app_info.get("broker", {}).get(
+            "broker_url", "unknown"
+        )
+
+        if "Max clients exceeded" in full_error:
+            return (
+                f"Could not start CLI entrypoint '{gateway_id}'.\n"
+                f"  Another process is already connected to this gateway's broker queue.\n\n"
+                f"  To fix, either:\n"
+                f"    1. Stop the other process using gateway '{gateway_id}', or\n"
+                f"    2. Use a different gateway ID:\n"
+                f"       CLI_ENTRYPOINT_ID=sam-cli-ep-02 sam run <config.yaml>"
+            )
+
+        if "Login Failure" in full_error or "UNAUTHORIZED" in full_error.upper():
+            return (
+                f"Broker authentication failed for '{broker_url}'.\n"
+                f"  Check SOLACE_BROKER_USERNAME, SOLACE_BROKER_PASSWORD, and SOLACE_BROKER_VPN\n"
+                f"  in your .env file or environment."
+            )
+
+        if "Unknown Host" in full_error or "Connection refused" in full_error.lower():
+            return (
+                f"Cannot reach broker at '{broker_url}'.\n"
+                f"  Ensure the broker is running and SOLACE_BROKER_URL is correct."
+            )
+
+        if "Timed Out" in full_error or "timed out" in full_error.lower():
+            return (
+                f"Connection to broker at '{broker_url}' timed out.\n"
+                f"  Check that the broker is reachable and not overloaded."
+            )
+
+        if "broker connection" in full_error.lower():
+            return (
+                f"Could not connect to broker at '{broker_url}'.\n"
+                f"  Details: {messages[-1] if len(messages) > 1 else messages[0]}"
+            )
+
+        return None
 
     def _get_gateway_component_class(self) -> type[BaseGatewayComponent]:
         return CliEntrypointComponent
