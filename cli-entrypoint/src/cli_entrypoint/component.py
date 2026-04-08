@@ -162,8 +162,21 @@ class CliEntrypointComponent(BaseGatewayComponent):
         """Return claims for the CLI user."""
         return {"id": self._user_id, "name": self._user_id, "source": "cli"}
 
+    def _is_standalone_launch(self) -> bool:
+        """Detect if this gateway was launched as its own `sam run` process."""
+        if self.connector and hasattr(self.connector, "apps"):
+            return len(self.connector.apps) == 1
+        return False
+
     def _start_listener(self) -> None:
         """Start the REPL loop. Called by BaseGatewayComponent.run()."""
+        if not self._is_standalone_launch():
+            log.info(
+                "%s CLI entrypoint loaded but not started — "
+                "launch it in its own process with: sam run configs/gateways/cli-entrypoint.yaml",
+                self.log_identifier,
+            )
+            return
         log.info("%s Starting CLI listener (REPL)...", self.log_identifier)
 
         # Initialize session store
