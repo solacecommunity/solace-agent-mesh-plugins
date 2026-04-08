@@ -162,26 +162,8 @@ class CliEntrypointComponent(BaseGatewayComponent):
         """Return claims for the CLI user."""
         return {"id": self._user_id, "name": self._user_id, "source": "cli"}
 
-    def _is_explicit_launch(self) -> bool:
-        """Detect if this gateway's config was explicitly passed to `sam run`.
-
-        When the user runs `sam run configs/gateways/cli-entrypoint.yaml`, sys.argv
-        contains only that one config file. When `sam run` auto-discovers all configs
-        under `configs/`, multiple files are present. We treat a single-config launch
-        as an explicit (standalone) invocation.
-        """
-        config_files = [f for f in sys.argv[1:] if f.endswith((".yaml", ".yml"))]
-        return len(config_files) == 1
-
     def _start_listener(self) -> None:
         """Start the REPL loop. Called by BaseGatewayComponent.run()."""
-        if not self._is_explicit_launch():
-            log.info(
-                "%s CLI entrypoint loaded but REPL not started (part of a multi-config SAM run). "
-                "To use the CLI, launch it separately: sam run configs/gateways/cli-entrypoint.yaml",
-                self.log_identifier,
-            )
-            return
         log.info("%s Starting CLI listener (REPL)...", self.log_identifier)
 
         # Initialize session store

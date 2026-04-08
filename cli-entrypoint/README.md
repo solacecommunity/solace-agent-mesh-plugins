@@ -91,10 +91,28 @@ CLI_ENTRYPOINT_ID=sam-cli-ep-01 sam run config.yaml
 CLI_ENTRYPOINT_ID=sam-cli-ep-02 sam run config.yaml  # second terminal
 ```
 
-When running the CLI from a SAM installation, suppress verbose SAM framework logs that can clutter the terminal by setting the logging levels before launching:
+### Suppressing SAM Log Output
+
+The CLI entrypoint produces a cleaner terminal experience when SAM framework logs are suppressed. You can do this in two ways:
+
+**Option 1: Environment variables (per launch)**
 
 ```bash
 LOGGING_SAC_LEVEL=ERROR LOGGING_SAM_LEVEL=ERROR sam run configs/gateways/my-cli.yaml
+```
+
+**Option 2: Use the bundled logging config**
+
+The plugin ships with a `logging.yaml` that suppresses console log output:
+
+```bash
+LOGGING_CONFIG_PATH=configs/gateways/logging.yaml sam run configs/gateways/my-cli.yaml
+```
+
+**Tip:** Create a shell alias for convenience:
+
+```bash
+alias sam-cli='LOGGING_CONFIG_PATH=configs/gateways/logging.yaml sam run configs/gateways/my-cli.yaml'
 ```
 
 ### Example Prompts

@@ -2,6 +2,8 @@
 Custom App class for the CLI Entrypoint.
 """
 
+import logging
+import sys
 from typing import Any, Dict, List
 
 from solace_agent_mesh.gateway.base.app import BaseGatewayApp
@@ -9,6 +11,7 @@ from solace_agent_mesh.gateway.base.component import BaseGatewayComponent
 
 from cli_entrypoint.component import CliEntrypointComponent
 
+log = logging.getLogger(__name__)
 
 info = {
     "class_name": "CliEntrypointApp",
@@ -61,7 +64,19 @@ class CliEntrypointApp(BaseGatewayApp):
     ]
 
     def __init__(self, app_info: Dict[str, Any], **kwargs):
+        config_files = [f for f in sys.argv[1:] if f.endswith((".yaml", ".yml"))]
+        self._skip_initialization = len(config_files) > 1
         super().__init__(app_info=app_info, **kwargs)
+
+    def _initialize_flows(self):
+        if self._skip_initialization:
+            log.info(
+                "CLI entrypoint: skipping flow initialization (multi-config SAM run). "
+                "To use the CLI, launch it separately: "
+                "sam run configs/gateways/cli-entrypoint.yaml"
+            )
+            return
+        super()._initialize_flows()
 
     def _get_gateway_component_class(self) -> type[BaseGatewayComponent]:
         return CliEntrypointComponent
