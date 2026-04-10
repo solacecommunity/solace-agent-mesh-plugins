@@ -70,12 +70,8 @@ apps:
       tools:
         - tool_type: mcp
           connection_params:
-            type: stdio
-            command: "npx"
-            args:
-              - "-y"
-              - "mcp-remote"
-              - "https://mcp.brightdata.com/sse?token=${BRIGHTDATA_TOKEN}"
+            type: sse
+            url: "https://mcp.brightdata.com/sse?token=${BRIGHTDATA_TOKEN}"
 
       session_service: *default_session_service
       artifact_service: *default_artifact_service
