@@ -16,6 +16,13 @@ This repository contains a collection of plugins for [Solace Agent Mesh (SAM)](h
 | [SendGrid Agent Plugin](./send-grid/)      | [SendGrid](https://sendgrid.com/)               | Email sending service                         |
 | [Find My IP Agent Plugin](./find-my-ip/)    | IP Detection: [IPify](https://ipify.org/) Geolocation: [ipapi.co](https://ipapi.co/), [ip-api.com](http://ip-api.com/), [ipinfo.io](https://ipinfo.io/), [ipwhois.io](https://ipwhois.io/) | IP, Location & Connection/Security Information |
 | [Zapier](./zapier)| [Zapier](https://zapier.com/) | Integration with Zapiers connectors as MCP servers |
+| [Object Detection](./object-detection/) | [YOLO](https://docs.ultralytics.com/) | YOLO-based object detection with YOLOv12 model |
+| [Local MLX Vision](./local-mlx-vision/) | [MLX](https://github.com/ml-explore/mlx) | Vision language model (QwenVL) on Apple Silicon using MLX framework |
+| [Artifact Host Agent](./artifact-host-agent/) | - | Web server for hosting artifacts via HTTP |
+| [ImageMagick Agent](./imagemagick/) | [ImageMagick](https://imagemagick.org/) | Image manipulation and processing |
+| [Web Agent](./web-agent/) | [DuckDuckGo](https://duckduckgo.com/) | Web search and content fetching |
+| [Local TTS](./local-tts/) | [VibeVoice](https://github.com/microsoft/VibeVoice) | Text-to-speech using Microsoft's VibeVoice |
+| [Video Editor Agent](./video-editor-agent/) | [FFmpeg](https://ffmpeg.org/) | Video editing and manipulation using FFmpeg |
 
 
 

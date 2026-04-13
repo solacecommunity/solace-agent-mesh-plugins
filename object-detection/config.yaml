@@ -1,0 +1,82 @@
+# Plugin Metadata:
+# Name: object-detection
+# Version: 0.1.0
+# Description: Object detection from image
+# Author: Greg <greg.meldrum@solace.com>
+# 
+# --- Start of Agent Configuration Template ---
+# Solace Agent Mesh: Plugin Configuration Template
+#
+# This file serves as a template for creating new agent configurations from this plugin.
+# Use placeholders like __COMPONENT_KEBAB_CASE_NAME__, __COMPONENT_PASCAL_CASE_NAME__,
+# and __COMPONENT_UPPER_SNAKE_CASE_NAME__ where the specific component name should be inserted.
+
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: __COMPONENT_KEBAB_CASE_NAME__.log
+
+# To use the `shared_config.yaml` file, uncomment the following line and remove the `shared_config` section below.
+!include ../shared_config.yaml
+
+apps:
+  - name: __COMPONENT_KEBAB_CASE_NAME__-app
+    app_base_path: . 
+    app_module: solace_agent_mesh.agent.sac.app 
+    broker:
+      <<: *broker_connection
+
+    # App Level Config
+    app_config:
+      namespace: ${NAMESPACE} 
+      supports_streaming: true 
+      agent_name: "__COMPONENT_PASCAL_CASE_NAME__" 
+      display_name: "__COMPONENT_SPACED_CAPITALIZED_NAME__ Agent"
+      model: *general_model 
+
+      instruction: |
+        You're an Object Detection agent that can identify and count objects in images.
+        You use the YOLO12m model trained on the COCO dataset to detect 80 different
+        object classes including people, vehicles, animals, and common objects.
+        When analyzing images, you can count specific objects that users are looking for.
+
+      tools:
+        - group_name: artifact_management
+          tool_type: builtin-group
+
+
+        # --- Object Detection Tool ---
+        - tool_type: python
+          component_module: object_detection.tools
+          component_base_path: . # Relative to where the agent runs
+          function_name: detect_objects_in_image
+          tool_config:
+            # YOLO model to use - can be:
+            # - Standard models: yolo12n.pt (nano), yolo11s.pt (small), yolo11m.pt (medium),
+            #                    yolo12l.pt (large), yolo11x.pt (extra large)
+            # - Custom trained model: path/to/your/custom_model.pt
+            # - Future models: yolo13m.pt, etc.
+            model_name: "yolo12m.pt"
+            confidence_threshold: 0.25
+        
+      session_service: *default_session_service
+      artifact_service: *default_artifact_service
+
+      artifact_handling_mode: "reference"
+      enable_embed_resolution: true
+      enable_artifact_content_instruction: true
+
+      agent_card:
+        description: "Object detection from image"
+        defaultInputModes: ["text", "file"]
+        defaultOutputModes: ["text", "file"]
+        skills:
+          - id: "detect_object"
+            name: "Detect Object"
+            description: "Detects objects in an image using a YOLO model (e.g., COCO-trained 80 classes)"
+
+      agent_card_publishing: { interval_seconds: 10 }
+      agent_discovery: { enabled: false }
+      inter_agent_communication:
+        allow_list: []
+        request_timeout_seconds: 30

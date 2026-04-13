@@ -1,0 +1,123 @@
+# Plugin Metadata:
+# Name: imagemagick
+# Version: 0.1.0
+# Description: Image editing using ImageMagick
+# Author: Greg <greg.meldrum@solace.com>
+#
+# --- Start of Agent Configuration Template ---
+# Solace Agent Mesh: Plugin Configuration Template
+#
+# This file serves as a template for creating new agent configurations from this plugin.
+# Use placeholders like __COMPONENT_KEBAB_CASE_NAME__, __COMPONENT_PASCAL_CASE_NAME__,
+# and __COMPONENT_UPPER_SNAKE_CASE_NAME__ where the specific component name should be inserted.
+
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: __COMPONENT_KEBAB_CASE_NAME__.log
+
+# To use the `shared_config.yaml` file, uncomment the following line and remove the `shared_config` section below.
+!include ../shared_config.yaml
+
+apps:
+  - name: __COMPONENT_KEBAB_CASE_NAME__-app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    broker:
+      <<: *broker_connection
+
+    # App Level Config
+    app_config:
+      namespace: ${NAMESPACE}
+      supports_streaming: true
+      agent_name: "__COMPONENT_PASCAL_CASE_NAME__"
+      display_name: "__COMPONENT_SPACED_CAPITALIZED_NAME__ Agent"
+      model: *general_model
+
+      instruction: |
+        You're an Image Editing agent that can manipulate and analyze images using ImageMagick.
+
+        Your capabilities include:
+        1. Get image information (dimensions, format, file size, color space, bit depth, compression)
+        2. Crop images to specific dimensions and positions
+        3. Resize images by percentage, width, height, or both (with aspect ratio control)
+        4. Convert images between formats (JPEG, PNG, GIF, WebP, BMP)
+        5. Add text overlays to images with customizable position, color, and styling
+
+        ImageMagick is a powerful image processing tool installed on the system.
+        Always ensure you understand the user's requirements before applying transformations.
+        When multiple operations are requested, perform them in a logical order.
+        Use get_image_info first if you need to know the current image dimensions before cropping or resizing.
+
+      tools:
+        - group_name: artifact_management
+          tool_type: builtin-group
+
+        # --- Crop Image Tool ---
+        - tool_type: python
+          component_module: imagemagick.tools
+          component_base_path: .
+          function_name: crop_image
+          tool_config: {}
+
+        # --- Resize Image Tool ---
+        - tool_type: python
+          component_module: imagemagick.tools
+          component_base_path: .
+          function_name: resize_image
+          tool_config: {}
+
+        # --- Convert Image Format Tool ---
+        - tool_type: python
+          component_module: imagemagick.tools
+          component_base_path: .
+          function_name: convert_image_format
+          tool_config: {}
+
+        # --- Add Text Overlay Tool ---
+        - tool_type: python
+          component_module: imagemagick.tools
+          component_base_path: .
+          function_name: add_text_overlay
+          tool_config: {}
+
+        # --- Get Image Info Tool ---
+        - tool_type: python
+          component_module: imagemagick.tools
+          component_base_path: .
+          function_name: get_image_info
+          tool_config: {}
+
+      session_service: *default_session_service
+      artifact_service: *default_artifact_service
+
+      artifact_handling_mode: "reference"
+      enable_embed_resolution: true
+      enable_artifact_content_instruction: true
+
+      agent_card:
+        description: "Image editing and analysis using ImageMagick"
+        defaultInputModes: ["text", "file"]
+        defaultOutputModes: ["text", "file"]
+        skills:
+          - id: "get_image_info"
+            name: "Get Image Info"
+            description: "Get detailed image information including dimensions, format, file size, and metadata"
+          - id: "crop_image"
+            name: "Crop Image"
+            description: "Crop an image to specific dimensions and position"
+          - id: "resize_image"
+            name: "Resize Image"
+            description: "Resize an image by percentage or dimensions"
+          - id: "convert_image_format"
+            name: "Convert Image Format"
+            description: "Convert an image to a different format (JPEG, PNG, GIF, WebP, BMP)"
+          - id: "add_text_overlay"
+            name: "Add Text Overlay"
+            description: "Add text overlay to an image with customizable styling"
+
+      agent_card_publishing: { interval_seconds: 10 }
+      agent_discovery: { enabled: false }
+      inter_agent_communication:
+        allow_list: []
+        request_timeout_seconds: 30

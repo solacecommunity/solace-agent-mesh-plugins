@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.imagemagick.metadata]
+type = "agent"
+
+[project]
+name = "imagemagick"
+version = "0.1.0"
+authors = [
+  { name="Greg", email="greg.meldrum@solace.com" },
+]
+description = "Image editing using ImageMagick"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    # Note: ImageMagick itself must be installed on the system
+    # This plugin calls the 'convert' command-line tool
+    # No Python dependencies are required beyond the SAM framework
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/imagemagick"]
+src-path = "src"
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/imagemagick" = "imagemagick/"
+"config.yaml" = "imagemagick/config.yaml"
+"README.md" = "imagemagick/README.md"
+"pyproject.toml" = "imagemagick/pyproject.toml"
