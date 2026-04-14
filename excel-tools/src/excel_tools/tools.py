@@ -137,7 +137,7 @@ def _unwrap_value(value: Any) -> Any:
 # ---------------------------------------------------------------------------
 
 async def list_sheets(
-    file_path: str,
+    file_path: Artifact,
     tool_context=None,
     tool_config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
@@ -168,7 +168,7 @@ async def list_sheets(
 # ---------------------------------------------------------------------------
 
 async def read_range(
-    file_path: str,
+    file_path: Artifact,
     sheet_name: Optional[str] = None,
     range_address: Optional[str] = None,
     max_rows: int = 200,
@@ -250,7 +250,7 @@ async def read_range(
 # ---------------------------------------------------------------------------
 
 async def get_formulas(
-    file_path: str,
+    file_path: Artifact,
     sheet_name: Optional[str] = None,
     range_address: Optional[str] = None,
     tool_context=None,
@@ -309,7 +309,7 @@ async def get_formulas(
 # ---------------------------------------------------------------------------
 
 async def evaluate_formulas(
-    file_path: str,
+    file_path: Artifact,
     cells: Optional[List[str]] = None,
     sheet_name: Optional[str] = None,
     tool_context=None,
@@ -376,7 +376,7 @@ async def evaluate_formulas(
 # ---------------------------------------------------------------------------
 
 async def recalculate(
-    file_path: str,
+    file_path: Artifact,
     inputs: Dict[str, Any] = None,
     output_cells: Optional[List[str]] = None,
     sheet_name: Optional[str] = None,
@@ -460,7 +460,7 @@ async def recalculate(
 # ---------------------------------------------------------------------------
 
 async def analyze_sheet(
-    file_path: str,
+    file_path: Artifact,
     sheet_name: Optional[str] = None,
     tool_context=None,
     tool_config: Optional[Dict[str, Any]] = None,
@@ -559,7 +559,7 @@ async def analyze_sheet(
 # ---------------------------------------------------------------------------
 
 async def write_cells(
-    file_path: str,
+    file_path: Artifact,
     updates: Dict[str, Any] = None,
     sheet_name: Optional[str] = None,
     save_as: Optional[str] = None,
@@ -884,7 +884,7 @@ async def cancel_scheduled_job(
 # ---------------------------------------------------------------------------
 
 async def batch_recalculate(
-    file_path: str,
+    file_path: Artifact,
     scenarios: List[Dict[str, Any]] = None,
     output_cells: Optional[List[str]] = None,
     sheet_name: Optional[str] = None,
@@ -949,7 +949,7 @@ async def batch_recalculate(
 # ---------------------------------------------------------------------------
 
 async def copy_sheet(
-    file_path: str,
+    file_path: Artifact,
     source_sheet: str,
     new_sheet_name: str,
     target_file: Optional[str] = None,
@@ -1024,7 +1024,7 @@ async def copy_sheet(
 # ---------------------------------------------------------------------------
 
 async def apply_template(
-    template_path: str,
+    template_path: Artifact,
     output_path: str,
     values: Dict[str, Any] = None,
     sheet_name: Optional[str] = None,
@@ -1079,8 +1079,8 @@ async def apply_template(
 # ---------------------------------------------------------------------------
 
 async def diff_workbooks(
-    file_a: str,
-    file_b: str,
+    file_a: Artifact,
+    file_b: Artifact,
     sheet_name: Optional[str] = None,
     tool_context=None,
     tool_config: Optional[Dict[str, Any]] = None,
@@ -1152,7 +1152,7 @@ def _safe_serialize(val: Any) -> Any:
 # ---------------------------------------------------------------------------
 
 async def validate_formulas(
-    file_path: str,
+    file_path: Artifact,
     sheet_name: Optional[str] = None,
     tool_context=None,
     tool_config: Optional[Dict[str, Any]] = None,
@@ -1257,7 +1257,7 @@ async def validate_formulas(
 # ---------------------------------------------------------------------------
 
 async def export_sheet_to_json(
-    file_path: str,
+    file_path: Artifact,
     sheet_name: Optional[str] = None,
     output_path: Optional[str] = None,
     orient: str = "records",
@@ -1344,7 +1344,7 @@ async def export_sheet_to_json(
 # ---------------------------------------------------------------------------
 
 async def snapshot_formulas(
-    file_path: str,
+    file_path: Artifact,
     output_path: Optional[str] = None,
     sheet_name: Optional[str] = None,
     tool_context=None,
