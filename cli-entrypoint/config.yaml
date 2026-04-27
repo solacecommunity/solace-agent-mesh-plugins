@@ -47,7 +47,8 @@ apps:
       # --- CLI Adapter-Specific Config ---
       adapter_config:
         prompt_name: "sam"
-        user_id: ${CLI_ENTRYPOINT_USER, cli_entrypoint_user}
+        # user_id: ${CLI_ENTRYPOINT_USER, cli_entrypoint_user}
+        user_id: ${CLI_ENTRYPOINT_USER, sam_dev_user}
         show_status_updates: true
 
       # --- Artifact Service ---
