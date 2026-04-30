@@ -111,3 +111,21 @@ apps:
               - "-y"
               - "@modelcontextprotocol/server-filesystem"
               - "${FILESYSTEM_ALLOWED_PATH}"
+
+      # Agent Card Definition
+      agent_card:
+        description: |
+          A helpful AI assistant for securely accessing and manipulating files on your Solace Agent Mesh agent host system.
+        defaultInputModes: [text] 
+        defaultOutputModes: [text, file] 
+        skills: []
+      
+      # Discovery & Communication
+      agent_card_publishing: 
+        interval_seconds: 10
+      agent_discovery: 
+        enabled: true
+      inter_agent_communication:
+        allow_list: ["*"] 
+        deny_list: [] 
+        request_timeout_seconds: 600
