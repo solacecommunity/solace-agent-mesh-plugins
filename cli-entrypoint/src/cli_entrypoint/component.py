@@ -1,5 +1,5 @@
 """
-CLI Entrypoint Component for the Solace Agent Mesh Gateway Framework.
+CLI Entrypoint Component for the Solace Agent Mesh.
 
 Provides an interactive terminal REPL for conversing with SAM agents.
 """
@@ -78,7 +78,7 @@ _console = Console(theme=_solace_theme, highlight=False)
 # Slash command auto-completion
 _COMMANDS = [
     "/new", "/sessions", "/switch", "/rename", "/delete",
-    "/agents", "/gateways", "/upload", "/artifacts", "/download",
+    "/agents", "/entrypoints", "/upload", "/artifacts", "/download",
     "/agent", "/retry", "/clear", "/multiline",
     "/alias", "/history", "/export",
     "/help", "/quit", "/exit",
@@ -129,7 +129,7 @@ class _CliCompleter(Completer):
 
 info = {
     "class_name": "CliEntrypointComponent",
-    "description": "Terminal REPL component for the CLI Entrypoint gateway.",
+    "description": "Terminal REPL component for the CLI Entrypoint.",
     "config_parameters": [],
     "input_schema": {"type": "object", "properties": {}},
     "output_schema": {"type": "object", "properties": {}},
@@ -146,7 +146,7 @@ class CliEntrypointComponent(BaseGatewayComponent):
         # Read adapter config
         adapter_config = self.get_config("adapter_config", {})
         self._prompt_name = adapter_config.get("prompt_name", "sam")
-        self._user_id = adapter_config.get("user_id", "cli_entrypoint_user")
+        self._user_id = adapter_config.get("user_id", "sam_dev_user")
         self._show_status_updates = adapter_config.get("show_status_updates", True)
         self._default_agent = self.get_config("default_agent_name", "OrchestratorAgent")
 
@@ -640,8 +640,8 @@ class CliEntrypointComponent(BaseGatewayComponent):
         elif cmd == "/agents":
             self._cmd_agents()
 
-        elif cmd == "/gateways":
-            self._cmd_gateways()
+        elif cmd == "/entrypoints":
+            self._cmd_entrypoints()
 
         elif cmd == "/agent":
             await self._cmd_agent(args, session_id)
@@ -842,24 +842,24 @@ class CliEntrypointComponent(BaseGatewayComponent):
         else:
             print("\n  No agents currently registered.\n")
 
-    def _cmd_gateways(self) -> None:
-        gateway_ids = self.gateway_registry.get_gateway_ids()
-        if gateway_ids:
-            print("\n  Connected gateways:")
-            for gid in gateway_ids:
-                gw_type = self.gateway_registry.get_gateway_type(gid) or "unknown"
-                last_seen = self.gateway_registry.get_last_seen(gid)
+    def _cmd_entrypoints(self) -> None:
+        entrypoint_ids = self.gateway_registry.get_gateway_ids()
+        if entrypoint_ids:
+            print("\n  Connected entrypoints:")
+            for eid in entrypoint_ids:
+                ep_type = self.gateway_registry.get_gateway_type(eid) or "unknown"
+                last_seen = self.gateway_registry.get_last_seen(eid)
                 if last_seen:
                     dt = datetime.fromtimestamp(last_seen, tz=timezone.utc)
                     ago = self._format_age(dt.isoformat())
                 else:
                     ago = "unknown"
-                marker = " (this)" if gid == self.gateway_id else ""
-                print(f"    \033[1m{gid}\033[0m{marker}")
-                print(f"      Type: {gw_type}  |  Last seen: {ago}")
+                marker = " (this)" if eid == self.gateway_id else ""
+                print(f"    \033[1m{eid}\033[0m{marker}")
+                print(f"      Type: {ep_type}  |  Last seen: {ago}")
             print()
         else:
-            print("\n  No gateways currently discovered.\n")
+            print("\n  No entrypoints currently discovered.\n")
 
     async def _cmd_agent(self, args: List[str], session_id: str) -> None:
         if len(args) < 2:
@@ -1059,7 +1059,7 @@ class CliEntrypointComponent(BaseGatewayComponent):
                     content_bytes=content,
                     mime_type=mime_type,
                     metadata_dict={
-                        "source": "cli_gateway_upload",
+                        "source": "cli_entrypoint_upload",
                         "original_filename": filename,
                         "upload_timestamp_utc": datetime.now(timezone.utc).isoformat(),
                         "gateway_id": self.gateway_id,
@@ -1289,9 +1289,9 @@ class CliEntrypointComponent(BaseGatewayComponent):
         print("    /rename <label>             — Rename the current session")
         print("    /delete <label|id>          — Remove a session from local index (history stays on SAM)")
         print()
-        print("  \033[1mAgents & Gateways\033[0m")
+        print("  \033[1mAgents & Entrypoints\033[0m")
         print("    /agents                     — List registered agents")
-        print("    /gateways                   — List connected gateways")
+        print("    /entrypoints                — List connected entrypoints")
         print("    /agent <name> <message>     — Send a message directly to a specific agent")
         print()
         print("  \033[1mFiles\033[0m")

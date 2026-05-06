@@ -22,7 +22,7 @@ info = {
 class CliEntrypointApp(BaseGatewayApp):
     """
     Custom App class for the CLI Entrypoint.
-    Extends BaseGatewayApp for common gateway functionalities.
+    Extends BaseGatewayApp for common SAM entrypoint functionalities.
     """
 
     SPECIFIC_APP_SCHEMA_PARAMS: List[Dict[str, Any]] = [
@@ -105,10 +105,10 @@ class CliEntrypointApp(BaseGatewayApp):
         if "Max clients exceeded" in full_error:
             return (
                 f"Could not start CLI entrypoint '{gateway_id}'.\n"
-                f"  Another process is already connected to this gateway's broker queue.\n\n"
+                f"  Another process is already connected to this entrypoint's broker queue.\n\n"
                 f"  To fix, either:\n"
-                f"    1. Stop the other process using gateway '{gateway_id}', or\n"
-                f"    2. Use a different gateway ID:\n"
+                f"    1. Stop the other process using entrypoint '{gateway_id}', or\n"
+                f"    2. Use a different entrypoint ID:\n"
                 f"       CLI_ENTRYPOINT_ID=sam-cli-ep-02 sam run <config.yaml>"
             )
 
