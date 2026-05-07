@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.sam_graph_database.metadata]
+type = "agent"
+
+[project]
+name = "sam_graph_database"
+version = "0.1.0"
+description = "A2A ADK Host plugin for natural language querying of graph databases (Neo4j)."
+readme = "README.md"
+authors = [
+    { name="SolaceLabs", email="solacelabs@solace.com" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "neo4j>=5.28.1",
+    "pydantic==2.11.9",
+    "PyYAML==6.0.2"
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["sam_graph_database"]
+src-path = "src"
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/sam_graph_database" = "sam_graph_database/"
+"config.yaml" = "sam_graph_database/config.yaml"
+"README.md" = "sam_graph_database/README.md"
+"pyproject.toml" = "sam_graph_database/pyproject.toml"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "--tb=short --strict-markers --disable-warnings -p pytest_asyncio"
+markers = []
+
+[tool.hatch.envs.hatch-test]
+dependencies = [
+  "pytest-asyncio",
+  "pytest>=8.0.0",
+  "pytest-mock>=3.0.0",
+  "pytest-cov>=4.0.0",
+  "pytest-xdist>=3.5.0",
+  "sam-test-infrastructure @ git+https://github.com/SolaceLabs/solace-agent-mesh#subdirectory=tests/sam-test-infrastructure"
+]
