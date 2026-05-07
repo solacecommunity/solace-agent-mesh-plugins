@@ -86,35 +86,34 @@ Once installed, run the entrypoint with:
 sam run config.yaml
 ```
 
-For multiple instances, set a unique entrypoint ID per terminal:
+**Recommended launch** — assign a unique entrypoint ID (so multiple terminals don't collide on the broker queue) and suppress SAM framework log chatter so the REPL output stays clean:
 
 ```bash
-CLI_ENTRYPOINT_ID=sam-cli-ep-01 sam run config.yaml
-CLI_ENTRYPOINT_ID=sam-cli-ep-02 sam run config.yaml  # second terminal
+CLI_ENTRYPOINT_ID=cli-entrypoint-02 \
+  LOGGING_SAC_LEVEL=ERROR \
+  LOGGING_SAM_LEVEL=ERROR \
+  LOGGING_SAM_TRACE_LEVEL=ERROR \
+  sam run configs/gateways/cli-entrypoint.yaml
 ```
+
+The three `LOGGING_*_LEVEL` vars correspond to the three logger channels SAM exposes: `solace_ai_connector` (SAC), `solace_agent_mesh` (SAM), and `sam_trace` (per-task agent traces). All three need to be set — leaving any one at its default (`INFO`) will leak chatter into the REPL.
+
+For additional terminals, just bump the ID (`cli-entrypoint-03`, `cli-entrypoint-04`, …). Each running CLI must use its own `CLI_ENTRYPOINT_ID`.
 
 ### Suppressing SAM Log Output
 
-The CLI entrypoint produces a cleaner terminal experience when SAM framework logs are suppressed. You can do this in two ways:
+The recommended launch above sets `LOGGING_SAC_LEVEL`, `LOGGING_SAM_LEVEL`, and `LOGGING_SAM_TRACE_LEVEL` to `ERROR` to silence all three SAM logger channels at the source. If a particularly noisy third-party library still leaks through, also set `LOGGING_ROOT_LEVEL=ERROR` (defaults to `WARNING`).
 
-**Option 1: Environment variables (per launch)**
+As an alternative to env vars, the plugin ships a `logging.yaml` that pins the console handler to ERROR and routes full DEBUG output to a rolling `cli-entrypoint.log` file:
 
 ```bash
-LOGGING_SAC_LEVEL=ERROR LOGGING_SAM_LEVEL=ERROR sam run configs/gateways/my-cli.yaml
+LOGGING_CONFIG_PATH=configs/gateways/logging.yaml sam run configs/gateways/cli-entrypoint.yaml
 ```
 
-**Option 2: Use the bundled logging config**
-
-The plugin ships with a `logging.yaml` that suppresses console log output:
+**Tip:** wrap the recommended launch in a shell alias so you don't have to retype it:
 
 ```bash
-LOGGING_CONFIG_PATH=configs/gateways/logging.yaml sam run configs/gateways/my-cli.yaml
-```
-
-**Tip:** Create a shell alias for convenience:
-
-```bash
-alias sam-cli='LOGGING_CONFIG_PATH=configs/gateways/logging.yaml sam run configs/gateways/my-cli.yaml'
+alias sam-cli='CLI_ENTRYPOINT_ID=cli-entrypoint-02 LOGGING_SAC_LEVEL=ERROR LOGGING_SAM_LEVEL=ERROR LOGGING_SAM_TRACE_LEVEL=ERROR sam run configs/gateways/cli-entrypoint.yaml'
 ```
 
 ### Example Prompts
