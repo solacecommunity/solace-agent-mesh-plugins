@@ -41,7 +41,8 @@ The plugin requires the following environment variables to be set:
 - `SOLACE_BROKER_USERNAME`: Broker username (default: `default`)
 - `SOLACE_BROKER_PASSWORD`: Broker password (default: `default`)
 - `SOLACE_BROKER_VPN`: Broker VPN name (default: `default`)
-- `CLI_ENTRYPOINT_USER`: User identity for this session (default: `cli_entrypoint_user`)
+- `SOLACE_DEV_MODE`: Enable broker dev mode (default: `false`)
+- `USE_TEMPORARY_QUEUES`: Use temporary broker queues (default: `true`)
 - `CLI_ENTRYPOINT_ID`: Unique entrypoint ID for multi-instance setups (default: `sam-cli-ep-01`)
 - `SAM_CLI_SESSIONS_DIR`: Directory for session index file (default: `~/.sam-cli-entrypoint`)
 
@@ -56,8 +57,9 @@ Configured under `adapter_config` in `config.yaml`:
 | Option | Default | Description |
 |---|---|---|
 | `prompt_name` | `"sam"` | Name displayed in the REPL prompt (e.g., `sam [default]>`) |
-| `user_id` | `"cli_entrypoint_user"` | User identity for this session |
 | `show_status_updates` | `true` | Show agent progress updates |
+
+> User identity defaults to `sam_dev_user` (provided by the SAM framework when no auth is configured) and is no longer surfaced via `adapter_config`.
 
 ## Installation
 
@@ -84,17 +86,34 @@ Once installed, run the entrypoint with:
 sam run config.yaml
 ```
 
-For multiple instances, set a unique entrypoint ID per terminal:
+**Recommended launch** — assign a unique entrypoint ID (so multiple terminals don't collide on the broker queue) and suppress SAM framework log chatter so the REPL output stays clean:
 
 ```bash
-CLI_ENTRYPOINT_ID=sam-cli-ep-01 sam run config.yaml
-CLI_ENTRYPOINT_ID=sam-cli-ep-02 sam run config.yaml  # second terminal
+CLI_ENTRYPOINT_ID=cli-entrypoint-02 \
+  LOGGING_SAC_LEVEL=ERROR \
+  LOGGING_SAM_LEVEL=ERROR \
+  LOGGING_SAM_TRACE_LEVEL=ERROR \
+  sam run configs/gateways/cli-entrypoint.yaml
 ```
 
-When running the CLI from a SAM installation, suppress verbose SAM framework logs that can clutter the terminal by setting the logging levels before launching:
+The three `LOGGING_*_LEVEL` vars correspond to the three logger channels SAM exposes: `solace_ai_connector` (SAC), `solace_agent_mesh` (SAM), and `sam_trace` (per-task agent traces). All three need to be set — leaving any one at its default (`INFO`) will leak chatter into the REPL.
+
+For additional terminals, just bump the ID (`cli-entrypoint-03`, `cli-entrypoint-04`, …). Each running CLI must use its own `CLI_ENTRYPOINT_ID`.
+
+### Suppressing SAM Log Output
+
+The recommended launch above sets `LOGGING_SAC_LEVEL`, `LOGGING_SAM_LEVEL`, and `LOGGING_SAM_TRACE_LEVEL` to `ERROR` to silence all three SAM logger channels at the source. If a particularly noisy third-party library still leaks through, also set `LOGGING_ROOT_LEVEL=ERROR` (defaults to `WARNING`).
+
+As an alternative to env vars, the plugin ships a `logging.yaml` that pins the console handler to ERROR and routes full DEBUG output to a rolling `cli-entrypoint.log` file:
 
 ```bash
-LOGGING_SAC_LEVEL=ERROR LOGGING_SAM_LEVEL=ERROR sam run configs/gateways/my-cli.yaml
+LOGGING_CONFIG_PATH=configs/gateways/logging.yaml sam run configs/gateways/cli-entrypoint.yaml
+```
+
+**Tip:** wrap the recommended launch in a shell alias so you don't have to retype it:
+
+```bash
+alias sam-cli='CLI_ENTRYPOINT_ID=cli-entrypoint-02 LOGGING_SAC_LEVEL=ERROR LOGGING_SAM_LEVEL=ERROR LOGGING_SAM_TRACE_LEVEL=ERROR sam run configs/gateways/cli-entrypoint.yaml'
 ```
 
 ### Example Prompts
@@ -116,34 +135,43 @@ LOGGING_SAC_LEVEL=ERROR LOGGING_SAM_LEVEL=ERROR sam run configs/gateways/my-cli.
 | `/rename <label>` | Rename the current session |
 | `/delete <label\|id>` | Remove a session from the local index (conversation history and artifacts remain on SAM) |
 
-#### General
+#### Agents & Entrypoints
 
 | Command | Description |
 |---|---|
 | `/agents` | List registered agents |
+| `/entrypoints` | List connected entrypoints (type and last-seen age) |
+| `/agent <name> <message>` | Send a message directly to a specific agent |
+
+#### Files
+
+| Command | Description |
+|---|---|
 | `/upload <file> [message]` | Send a file to an agent |
 | `/artifacts` | List agent-created files in this session |
 | `/download [artifact] [path]` | Save artifacts (Tab completes artifact names; interactive multi-select if no artifact given) |
+
+#### History & Export
+
+| Command | Description |
+|---|---|
+| `/history [count]` | Show conversation history for the current session (optionally last N entries) |
+| `/export [format] [path]` | Export history to a file. Format: `md` (default), `json`, or `txt` |
+
+#### Terminal
+
+| Command | Description |
+|---|---|
+| `/retry` | Re-send the last message |
+| `/clear` | Clear the screen |
+| `/multiline` | Toggle multiline input (Alt+Enter to submit) |
+| `/alias [name] [text]` | Create, list, or remove command aliases (cannot shadow built-ins) |
 | `/help` | Show available commands |
-| `/quit` | Exit the CLI |
+| `/quit` (or `/exit`) | Exit the CLI |
 
 #### Command Shortcuts
 
-All commands support prefix matching. Type the shortest unambiguous prefix and press Enter:
-
-| Shortcut | Resolves to |
-|---|---|
-| `/se` | `/sessions` |
-| `/sw` | `/switch` |
-| `/n` | `/new` |
-| `/re` | `/rename` |
-| `/de` | `/delete` |
-| `/ag` | `/agents` |
-| `/ar` | `/artifacts` |
-| `/u` | `/upload` |
-| `/do` | `/download` |
-| `/h` | `/help` |
-| `/q` | `/quit` |
+All commands support prefix matching — type the shortest unambiguous prefix and press Enter. With the current command set, examples include `/se` → `/sessions`, `/sw` → `/switch`, `/n` → `/new`, `/re` → `/rename`, `/de` → `/delete`, `/ar` → `/artifacts`, `/u` → `/upload`, `/do` → `/download`, `/m` → `/multiline`, `/c` → `/clear`, `/q` → `/quit`. Prefixes that are shared between commands (e.g. `/h` between `/help` and `/history`, `/ag` between `/agents` and `/agent`, `/e` between `/export` and `/exit`) require an extra letter to disambiguate.
 
 #### How Sessions Work
 
@@ -196,7 +224,7 @@ sam run config.yaml
 
 ## Original Author
 
-Created by Giri Venkatesan
+Created by Giri Venkatesan (SolaceLabs)
 
 ## Contributing
 
@@ -214,3 +242,7 @@ To contribute to this plugin review [Contributing](/CONTRIBUTING.md)
 - Markdown rendering via Rich
 - File upload and artifact management
 - Prefix matching for commands
+- Direct-to-agent messaging (`/agent`), connected entrypoints listing (`/entrypoints`), and command aliases (`/alias`)
+- In-session history and export to md/json/txt (`/history`, `/export`)
+- Terminal helpers: `/retry`, `/clear`, `/multiline`
+- Safe behaviour during multi-config `sam run` invocations (skips REPL/broker binding)
