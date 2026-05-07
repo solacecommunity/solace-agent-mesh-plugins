@@ -17,6 +17,7 @@ This repository contains a collection of plugins for [Solace Agent Mesh (SAM)](h
 | [Find My IP Agent Plugin](./find-my-ip/)    | IP Detection: [IPify](https://ipify.org/) Geolocation: [ipapi.co](https://ipapi.co/), [ip-api.com](http://ip-api.com/), [ipinfo.io](https://ipinfo.io/), [ipwhois.io](https://ipwhois.io/) | IP, Location & Connection/Security Information |
 | [Zapier](./zapier)| [Zapier](https://zapier.com/) | Integration with Zapiers connectors as MCP servers |
 | [CLI Entrypoint Gateway Plugin](./cli-entrypoint/) | N/A | Terminal-based REPL entrypoint for chatting with SAM agents from the command line |
+| [Filesystem MCP Agent Plugin](./filesystem/) | [MCP Filesystem Server](https://github.com/modelcontextprotocol/servers) | Secure file operations with configurable access controls |
 
 
 
