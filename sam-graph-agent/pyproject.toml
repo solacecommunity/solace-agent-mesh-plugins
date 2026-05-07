@@ -14,7 +14,8 @@ version = "0.1.0"
 description = "A2A ADK Host plugin for natural language querying of graph databases (Neo4j)."
 readme = "README.md"
 authors = [
-    { name="SolaceLabs", email="solacelabs@solace.com" }
+    { name="Emil Zegers", email="emil.zegers@solace.com" }
+    { name="Peter Kester", email="peter.kester@solace.com" }
 ]
 requires-python = ">=3.10"
 dependencies = [
@@ -45,5 +46,10 @@ dependencies = [
   "pytest-mock>=3.0.0",
   "pytest-cov>=4.0.0",
   "pytest-xdist>=3.5.0",
-  "sam-test-infrastructure @ git+https://github.com/SolaceLabs/solace-agent-mesh#subdirectory=tests/sam-test-infrastructure"
+  "sam-test-infrastructure @ git+https://github.com/SolaceLabs/solace-agent-mesh#subdirectory=tests/sam-test-infrastructure",
+  "solace-agent-mesh",
+  "google-adk",
 ]
+
+[[tool.hatch.envs.hatch-test.matrix]]
+python = ["3.12"]
