@@ -20,6 +20,7 @@ This repository contains a collection of plugins for [Solace Agent Mesh (SAM)](h
 | [Artifact Host Agent](./artifact-host-agent/) | - | Web server for hosting artifacts via HTTP |
 | [ImageMagick Agent](./imagemagick/) | [ImageMagick](https://imagemagick.org/) | Image manipulation and processing |
 | [Web Agent](./web-agent/) | [DuckDuckGo](https://duckduckgo.com/) | Web search and content fetching |
+| [Finance App](./finance/) | [yFinance](https://finance.yahoo.com/) | Stock price and fundamentals data plugin using  yfinance |
 | [CLI Entrypoint Gateway Plugin](./cli-entrypoint/) | N/A | Terminal-based REPL entrypoint for chatting with SAM agents from the command line |
 | [Filesystem MCP Agent Plugin](./filesystem/) | [MCP Filesystem Server](https://github.com/modelcontextprotocol/servers) | Secure file operations with configurable access controls |
 
