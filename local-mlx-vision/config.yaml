@@ -1,0 +1,128 @@
+# Plugin Metadata:
+# Name: local-mlx-vision
+# Version: 0.1.0
+# Description: A SAM plugin: local mlx vision
+# Author: Your Name <your.email@example.com>
+# 
+# --- Start of Agent Configuration Template ---
+# Solace Agent Mesh: Plugin Configuration Template
+#
+# This file serves as a template for creating new agent configurations from this plugin.
+# Use placeholders like __COMPONENT_KEBAB_CASE_NAME__, __COMPONENT_PASCAL_CASE_NAME__,
+# and __COMPONENT_UPPER_SNAKE_CASE_NAME__ where the specific component name should be inserted.
+
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: __COMPONENT_KEBAB_CASE_NAME__.log
+
+# To use the `shared_config.yaml` file, uncomment the following line and remove the `shared_config` section below.
+# !include ../shared_config.yaml
+shared_config:
+  - broker_connection: &broker_connection
+      dev_mode: ${SOLACE_DEV_MODE, false}
+      broker_url: ${SOLACE_BROKER_URL, ws://localhost:8008}
+      broker_username: ${SOLACE_BROKER_USERNAME, default}
+      broker_password: ${SOLACE_BROKER_PASSWORD, default}
+      broker_vpn: ${SOLACE_BROKER_VPN, default}
+      temporary_queue: ${USE_TEMPORARY_QUEUES, true}
+
+  - models:
+    general: &general_model
+      # This dictionary structure tells ADK to use the LiteLlm wrapper.
+      # 'model' uses the specific model identifier your endpoint expects.
+      model: ${LLM_SERVICE_GENERAL_MODEL_NAME} # Use env var for model name
+      # 'api_base' tells LiteLLM where to send the request.
+      api_base: ${LLM_SERVICE_ENDPOINT} # Use env var for endpoint URL
+      # 'api_key' provides authentication.
+      api_key: ${LLM_SERVICE_API_KEY} # Use env var for API key
+
+  - services:
+    # Default session service configuration
+    session_service: &default_session_service
+      type: "memory"
+      default_behavior: "PERSISTENT"
+    
+    # Default artifact service configuration
+    artifact_service: &default_artifact_service
+      type: "filesystem"
+      base_path: "/tmp/samv2"
+      artifact_scope: namespace # Or "namespace", "app", "custom"
+
+apps:
+  - name: __COMPONENT_KEBAB_CASE_NAME__-app
+    app_base_path: . 
+    app_module: solace_agent_mesh.agent.sac.app 
+    broker:
+      <<: *broker_connection
+
+    # App Level Config
+    app_config:
+      namespace: ${NAMESPACE} 
+      supports_streaming: true 
+      agent_name: "__COMPONENT_PASCAL_CASE_NAME__" 
+      display_name: "__COMPONENT_SPACED_CAPITALIZED_NAME__ Agent"
+      model: *general_model 
+
+      instruction: |
+        You are the __COMPONENT_SPACED_CAPITALIZED_NAME__ Agent, a specialized agent capable
+        of analyzing images using a local vision language model running on Apple Silicon.
+
+        Your capabilities:
+        1. Analyze images using the MLX Vision Language Model (Qwen3-VL-2B-Instruct-4bit)
+        2. Perform OCR (Optical Character Recognition) on images
+        3. Extract structured data from images (receipts, forms, documents)
+        4. Describe image content and identify objects
+        5. Answer questions about images
+        6. Work with both uploaded artifacts and local file paths
+
+        Important constraints:
+        - You require macOS with Apple Silicon (M1, M2, M3, etc.) to function
+        - Image analysis runs locally using mlx-vlm, ensuring privacy
+        - Processing may take 10-60 seconds depending on image complexity
+
+        Usage examples:
+        - "Analyze this receipt and extract all fields as JSON"
+        - "Describe what's happening in this image"
+        - "OCR this document and format the text"
+        - "What objects are visible in this image?"
+
+        When analyzing images:
+        - Use the analyze_image tool with a clear, specific prompt
+        - For OCR tasks, specify the desired output format (JSON, plain text, etc.)
+        - For complex extractions, ask for structured data
+        - Temperature is set to 0.0 by default for deterministic results
+
+      tools:
+        - group_name: artifact_management
+          tool_type: builtin-group
+
+        # Vision Analysis Tool - Primary capability
+        - tool_type: python
+          component_module: local_mlx_vision.tools
+          component_base_path: .
+          function_name: analyze_image
+          tool_config:
+            model: "mlx-community/Qwen3-VL-2B-Instruct-4bit"
+
+      session_service: *default_session_service
+      artifact_service: *default_artifact_service
+
+      artifact_handling_mode: "reference"
+      enable_embed_resolution: true
+      enable_artifact_content_instruction: true
+
+      agent_card:
+        description: "Local vision language model agent for image analysis, OCR, and visual understanding using MLX on Apple Silicon"
+        defaultInputModes: ["text", "file"]
+        defaultOutputModes: ["text"]
+        skills:
+          - id: "analyze_image"
+            name: "Analyze Image"
+            description: "Analyze images using local MLX vision model for OCR, object detection, image description, and structured data extraction"
+
+      agent_card_publishing: { interval_seconds: 10 }
+      agent_discovery: { enabled: false }
+      inter_agent_communication:
+        allow_list: []
+        request_timeout_seconds: 30

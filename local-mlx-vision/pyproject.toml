@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.local_mlx_vision.metadata]
+type = "agent"
+
+[project]
+name = "local_mlx_vision"
+version = "0.1.0"
+authors = [
+  { name="Your Name", email="your.email@example.com" },
+]
+description = "SAM agent plugin for local vision language model inference using MLX on Apple Silicon"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mlx>=0.30.0",
+    "mlx-lm>=0.28.0",
+    "mlx-vlm>=0.3.9",
+    "numpy>=2.0.0",
+    "pillow>=12.0.0",
+    "transformers>=4.57.3",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/local_mlx_vision"]
+src-path = "src"
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/local_mlx_vision" = "local_mlx_vision/"
+"config.yaml" = "local_mlx_vision/config.yaml"
+"README.md" = "local_mlx_vision/README.md"
+"pyproject.toml" = "local_mlx_vision/pyproject.toml"

@@ -16,6 +16,9 @@ This repository contains a collection of plugins for [Solace Agent Mesh (SAM)](h
 | [SendGrid Agent Plugin](./send-grid/)      | [SendGrid](https://sendgrid.com/)               | Email sending service                         |
 | [Find My IP Agent Plugin](./find-my-ip/)    | IP Detection: [IPify](https://ipify.org/) Geolocation: [ipapi.co](https://ipapi.co/), [ip-api.com](http://ip-api.com/), [ipinfo.io](https://ipinfo.io/), [ipwhois.io](https://ipwhois.io/) | IP, Location & Connection/Security Information |
 | [Zapier](./zapier)| [Zapier](https://zapier.com/) | Integration with Zapiers connectors as MCP servers |
+| [Local MLX Vision](./local-mlx-vision/) | [MLX](https://github.com/ml-explore/mlx) | Vision language model (QwenVL) on Apple Silicon using MLX framework |
+| [Local TTS](./local-tts/) | [VibeVoice](https://github.com/microsoft/VibeVoice) | Text-to-speech using Microsoft's VibeVoice |
+| [Video Editor Agent](./video-editor-agent/) | [FFmpeg](https://ffmpeg.org/) | Video editing and manipulation using FFmpeg |
 | [CLI Entrypoint Gateway Plugin](./cli-entrypoint/) | N/A | Terminal-based REPL entrypoint for chatting with SAM agents from the command line |
 | [Filesystem MCP Agent Plugin](./filesystem/) | [MCP Filesystem Server](https://github.com/modelcontextprotocol/servers) | Secure file operations with configurable access controls |
 
