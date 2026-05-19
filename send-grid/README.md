@@ -26,6 +26,9 @@ This agent provides the following capabilities:
 - **Delivery Tracking**: Leverage SendGrid's delivery and engagement tracking
 - **Reliable Delivery**: Built on SendGrid's robust email infrastructure
 
+## Video
+<iframe width="560" height="315" src="https://www.youtube.com/embed/9VnFKJyWVZM?si=MjG4F9tL2VC5uZyy" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+
 ## Configuration
 
 The plugin requires the following environment variables to be set:
