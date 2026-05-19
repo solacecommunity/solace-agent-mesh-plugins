@@ -68,16 +68,19 @@ apps:
         Use your tools to search the web, analyze the results, and provide an answer to the user.
       tools:
         - tool_type: mcp
+            connection_params:
+              type: streamable-http
+              url: https://mcp.tavily.com/mcp/?tavilyApiKey=${TAVILY_TOKEN}
           # connection_params:
             # type: sse
             # url: "https://mcp.tavily.com/mcp/?tavilyApiKey=${TAVILY_TOKEN}"
-          connection_params:
-            type: stdio
-            command: "npx"
-            args:
-              - "-y"
-              - "mcp-remote"
-              - "https://mcp.tavily.com/mcp/?tavilyApiKey=${TAVILY_TOKEN}"
+          # connection_params:
+          #   type: stdio
+          #   command: "npx"
+          #   args:
+          #     - "-y"
+          #     - "mcp-remote"
+          #     - "https://mcp.tavily.com/mcp/?tavilyApiKey=${TAVILY_TOKEN}"
 
       session_service: *default_session_service
       artifact_service: *default_artifact_service

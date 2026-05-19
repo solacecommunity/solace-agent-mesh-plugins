@@ -1,8 +1,8 @@
 # Plugin Metadata:
-# Name: bright-data
+# Name: filesystem
 # Version: 0.1.0
-# Description: An agent to discover, access, extract and interact with any public website via brighdata
-# Author: Jamieson Walker <jamieson.walker@solace.com>
+# Description: Secure file operations with configurable access controls for MCP
+# Author: Leslie Fernando <leslie.fernando@solace.com>
 # 
 # --- Start of Agent Configuration Template ---
 # Solace Agent Mesh: Plugin Configuration Template
@@ -50,7 +50,7 @@ shared_config:
       artifact_scope: namespace # Or "namespace", "app", "custom"
 
 apps:
-  - name: "BrightData__app"
+  - name: __COMPONENT_KEBAB_CASE_NAME__-app
     app_base_path: . 
     app_module: solace_agent_mesh.agent.sac.app 
     broker:
@@ -58,29 +58,64 @@ apps:
 
     # App Level Config
     app_config:
-      namespace: ${NAMESPACE} 
-      supports_streaming: true 
-      agent_name: "BrightData" 
-      display_name: "BrightData Agent"
+      namespace: "${NAMESPACE}" 
+      supports_streaming: false 
+      agent_name: "__COMPONENT_PASCAL_CASE_NAME__" 
+      display_name: "__COMPONENT_PASCAL_CASE_NAME__"
       model: *general_model 
 
       instruction: |
-        You are a helpful AI assistant for discovering, accessing, extracting and interacting with any public website via BrightData.
+        You are a specialized filesystem operations agent that provides secure, controlled access to file operations through the Model Context Protocol (MCP).
+
+        Core Functions:
+        - Read files and directories with configurable access controls
+        - Write and create files in allowed directories
+        - List directory contents and file information
+        - Search for files with patterns
+        - Move and manipulate files safely
+        - Provide file metadata and statistics
+
+        Security Features:
+        - Configurable allowed directories to restrict access
+        - Path validation to prevent directory traversal attacks
+        - Read-only mode support for enhanced security
+        - Comprehensive error handling and logging
+
+        Use Cases You Handle:
+        - "Read the contents of file X" - Securely read file contents
+        - "List all files in directory Y" - Display directory contents
+        - "Create a new file with this content" - Write new files
+        - "Search for files matching pattern Z" - Find files by pattern
+        - "Get information about file A" - Provide file metadata
+
+        How to Respond:
+        - Always verify paths are within allowed directories
+        - Provide clear error messages for permission issues
+        - Return structured data for easy consumption
+        - Log all file operations for audit trails
+
+        **Important Notes:**
+        - File operations are restricted to configured allowed paths
+        - Operations respect the read-only setting if enabled
+        - Always validate and sanitize file paths
+        - Provide informative error messages for failed operations
+
+        Operate securely and efficiently within the configured access controls.
 
       tools:
         - tool_type: mcp
           connection_params:
-            type: sse
-            url: "https://mcp.brightdata.com/sse?token=${BRIGHTDATA_TOKEN}"
-
-      session_service: *default_session_service
-      artifact_service: *default_artifact_service
-      
+            type: stdio
+            command: "npx"
+            args:
+              - "-y"
+              - "@modelcontextprotocol/server-filesystem"
+              - "${FILESYSTEM_ALLOWED_PATH}"
 
       # Agent Card Definition
       agent_card:
         description: |
-          A helpful AI assistant for discovering, accessing, extracting and interacting with any public website.
+          A helpful AI assistant for securely accessing and manipulating files on your Solace Agent Mesh agent host system.
         defaultInputModes: [text] 
         defaultOutputModes: [text, file] 
         skills: []

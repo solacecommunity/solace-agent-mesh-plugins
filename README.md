@@ -23,6 +23,8 @@ This repository contains a collection of plugins for [Solace Agent Mesh (SAM)](h
 | [Web Agent](./web-agent/) | [DuckDuckGo](https://duckduckgo.com/) | Web search and content fetching |
 | [Local TTS](./local-tts/) | [VibeVoice](https://github.com/microsoft/VibeVoice) | Text-to-speech using Microsoft's VibeVoice |
 | [Video Editor Agent](./video-editor-agent/) | [FFmpeg](https://ffmpeg.org/) | Video editing and manipulation using FFmpeg |
+| [CLI Entrypoint Gateway Plugin](./cli-entrypoint/) | N/A | Terminal-based REPL entrypoint for chatting with SAM agents from the command line |
+| [Filesystem MCP Agent Plugin](./filesystem/) | [MCP Filesystem Server](https://github.com/modelcontextprotocol/servers) | Secure file operations with configurable access controls |
 
 
 

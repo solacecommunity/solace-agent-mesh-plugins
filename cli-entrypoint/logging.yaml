@@ -1,0 +1,24 @@
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  standard:
+    format: "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: ERROR
+    formatter: standard
+    stream: ext://sys.stderr
+  file:
+    class: cli_entrypoint.logging_utils.MkdirRotatingFileHandler
+    level: DEBUG
+    formatter: standard
+    filename: cli-entrypoint.log
+    maxBytes: 52428800  # 50 MB
+    backupCount: 3
+
+root:
+  level: DEBUG
+  handlers: [console, file]
