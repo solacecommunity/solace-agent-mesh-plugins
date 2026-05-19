@@ -16,6 +16,11 @@ This repository contains a collection of plugins for [Solace Agent Mesh (SAM)](h
 | [SendGrid Agent Plugin](./send-grid/)      | [SendGrid](https://sendgrid.com/)               | Email sending service                         |
 | [Find My IP Agent Plugin](./find-my-ip/)    | IP Detection: [IPify](https://ipify.org/) Geolocation: [ipapi.co](https://ipapi.co/), [ip-api.com](http://ip-api.com/), [ipinfo.io](https://ipinfo.io/), [ipwhois.io](https://ipwhois.io/) | IP, Location & Connection/Security Information |
 | [Zapier](./zapier)| [Zapier](https://zapier.com/) | Integration with Zapiers connectors as MCP servers |
+| [Object Detection](./object-detection/) | [YOLO](https://docs.ultralytics.com/) | YOLO-based object detection with YOLOv12 model |
+| [Artifact Host Agent](./artifact-host-agent/) | - | Web server for hosting artifacts via HTTP |
+| [ImageMagick Agent](./imagemagick/) | [ImageMagick](https://imagemagick.org/) | Image manipulation and processing |
+| [Web Agent](./web-agent/) | [DuckDuckGo](https://duckduckgo.com/) | Web search and content fetching |
+| [Finance App](./finance/) | [yFinance](https://finance.yahoo.com/) | Stock price and fundamentals data plugin using  yfinance |
 | [CLI Entrypoint Gateway Plugin](./cli-entrypoint/) | N/A | Terminal-based REPL entrypoint for chatting with SAM agents from the command line |
 | [Filesystem MCP Agent Plugin](./filesystem/) | [MCP Filesystem Server](https://github.com/modelcontextprotocol/servers) | Secure file operations with configurable access controls |
 

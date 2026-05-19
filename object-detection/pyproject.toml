@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.object_detection.metadata]
+type = "agent"
+
+[project]
+name = "object_detection"
+version = "0.1.0"
+authors = [
+  { name="Greg", email="greg.meldrum@solace.com" },
+]
+description = "Object detection from image"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "ultralytics>=8.3.0",  # YOLO11 support
+    "pillow>=10.0.0",      # Image processing
+    "numpy>=1.24.0",       # Array operations (also YOLO dependency)
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/object_detection"]
+src-path = "src"
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/object_detection" = "object_detection/"
+"config.yaml" = "object_detection/config.yaml"
+"README.md" = "object_detection/README.md"
+"pyproject.toml" = "object_detection/pyproject.toml"

@@ -1,0 +1,122 @@
+# Plugin Metadata:
+# Name: artifact-host-agent
+# Version: 0.1.0
+# Description: Host artifacts on a web server for easy access
+# Author: Greg <greg.meldrum@solace.com>
+#
+# --- Start of Agent Configuration Template ---
+# Solace Agent Mesh: Plugin Configuration Template
+#
+# This file serves as a template for creating new agent configurations from this plugin.
+# Use placeholders like __COMPONENT_KEBAB_CASE_NAME__, __COMPONENT_PASCAL_CASE_NAME__,
+# and __COMPONENT_UPPER_SNAKE_CASE_NAME__ where the specific component name should be inserted.
+
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: __COMPONENT_KEBAB_CASE_NAME__.log
+
+# To use the `shared_config.yaml` file, uncomment the following line and remove the `shared_config` section below.
+!include ../shared_config.yaml
+
+apps:
+  - name: __COMPONENT_KEBAB_CASE_NAME__-app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    broker:
+      <<: *broker_connection
+
+    # App Level Config
+    app_config:
+      namespace: ${NAMESPACE}
+      supports_streaming: true
+      agent_name: "__COMPONENT_PASCAL_CASE_NAME__"
+      display_name: "__COMPONENT_SPACED_CAPITALIZED_NAME__ Agent"
+      model: *general_model
+
+      instruction: |
+        You are an Artifact Hosting Agent that makes artifacts accessible via a web server.
+
+        Your capability:
+        - Host artifacts on a web server running on localhost
+        - Provide URLs for easy access to hosted files
+        - Support all file types (images, PDFs, audio, video, documents, etc.)
+
+        The web server runs automatically when the agent starts. It provides:
+        - Direct file access via URLs
+        - A directory listing at the root URL showing all hosted files
+        - File size information
+
+        When users ask you to:
+        - "Host" or "share" an artifact → Use the host_artifact tool
+        - "Make accessible" or "provide a link" → Use the host_artifact tool
+        - The tool will copy the artifact to the web directory and return a URL
+
+        CRITICAL: Hosting HTML files with references to other artifacts
+        When hosting an HTML file that references other artifacts (images, CSS, JS, etc.):
+        1. First, host the HTML file using host_artifact
+        2. Examine the HTML content for references to other artifacts (img src, link href, script src, etc.)
+        3. For EACH referenced artifact, use host_artifact to host it as well
+        4. The web server can ONLY serve files that have been explicitly hosted - it cannot access artifacts directly
+        5. Ensure all referenced files use the same filenames as in the HTML (or update the HTML references)
+
+        Example workflow for HTML with images:
+        - User uploads "report.html" that contains <img src="chart.png">
+        - You must: host_artifact("report.html") AND host_artifact("chart.png")
+        - Both files need to be in the web directory for the HTML to display correctly
+
+        Default configuration:
+        - Server: http://localhost:8080
+        - Directory listing: http://localhost:8080/
+        - Individual files: http://localhost:8080/filename.ext
+
+        Note: If behind a firewall/proxy, a custom base_url can be configured.
+
+      # Lifecycle functions
+      agent_init_function:
+        module: artifact_host_agent.lifecycle
+        name: init_function
+        config:
+          port: 8080
+          host: "127.0.0.1"
+          host_directory: "./hosted_files"
+          # base_url: "https://myserver.com/artifacts"  # Optional: for firewall/proxy scenarios
+
+      cleanup_function:
+        component_module: artifact_host_agent.lifecycle
+        function_name: cleanup_function
+
+      tools:
+        # Custom host_artifact tool
+        - tool_type: python
+          component_module: artifact_host_agent.tools
+          component_base_path: .
+          function_name: host_artifact
+          tool_config: {}
+            # base_url: "https://myserver.com/artifacts"  # Optional: custom base URL
+
+        # Artifact management tools
+        - tool_type: builtin-group
+          group_name: "artifact_management"
+
+      session_service: *default_session_service
+      artifact_service: *default_artifact_service
+
+      artifact_handling_mode: "embed"
+      enable_embed_resolution: true
+      enable_artifact_content_instruction: true
+
+      agent_card:
+        description: "Host artifacts on a web server for easy access via URLs"
+        defaultInputModes: ["text", "file"]
+        defaultOutputModes: ["text"]
+        skills:
+          - id: "host_artifact"
+            name: "Host Artifact"
+            description: "Make artifacts accessible via web server and provide URLs for access"
+
+      agent_card_publishing: { interval_seconds: 10 }
+      agent_discovery: { enabled: false }
+      inter_agent_communication:
+        allow_list: []
+        request_timeout_seconds: 60
