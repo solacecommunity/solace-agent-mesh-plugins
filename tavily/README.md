@@ -25,6 +25,10 @@ This agent provides the following capabilities:
 - **Structured Results**: Receive search results in a structured, easy-to-parse format
 - **Contextual Relevance**: Benefit from Tavily's AI-powered relevance ranking
 
+## Video 
+[![Watch the video](https://img.youtube.com/vi/rydMzt5QMEM/hqdefault.jpg)](https://www.youtube.com/embed/rydMzt5QMEM)
+https://youtu.be/rydMzt5QMEM?si=YT5deKlrZI9AZRMI
+
 ## Configuration
 
 The plugin requires the following environment variables to be set:

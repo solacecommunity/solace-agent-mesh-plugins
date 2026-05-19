@@ -27,7 +27,9 @@ This agent provides the following capabilities:
 - **Reliable Delivery**: Built on SendGrid's robust email infrastructure
 
 ## Video
-<iframe width="560" height="315" src="https://www.youtube.com/embed/9VnFKJyWVZM?si=MjG4F9tL2VC5uZyy" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+
+[![Watch the video](https://img.youtube.com/vi/9VnFKJyWVZM/hqdefault.jpg)](https://youtu.be/9VnFKJyWVZM?si=-g9ISgrBNxAbnurS)
+https://youtu.be/9VnFKJyWVZM?si=-g9ISgrBNxAbnurS
 
 ## Configuration
 
