@@ -293,6 +293,192 @@ class RedisStateStore(StateStore):
         return list(await r.zrangebyscore(self._expiry_key(), str(now), "+inf"))
 
 
+class DatabaseStateStore(StateStore):
+    """State store backed by SAM's CacheService (PostgreSQL/SQLite via SQLAlchemy).
+
+    Uses the same database infrastructure as SAM's built-in session and task state,
+    providing persistence across restarts without requiring a separate Redis deployment.
+    """
+
+    def __init__(
+        self,
+        connection_string: str = "sqlite:///correlator_state.db",
+        key_prefix: str = "correlator:",
+    ) -> None:
+        self._prefix = key_prefix
+        self._connection_string = connection_string
+        self._cache_service: Any = None
+
+    def _get_cache_service(self) -> Any:
+        if self._cache_service is None:
+            try:
+                from solace_ai_connector.services.cache_service import (
+                    CacheService,
+                    create_storage_backend,
+                )
+            except ImportError as e:
+                raise RuntimeError(
+                    "solace_ai_connector is required for DatabaseStateStore. "
+                    "This store is intended to run within a SAM environment."
+                ) from e
+            backend = create_storage_backend(
+                backend_type="sqlalchemy",
+                connection_string=self._connection_string,
+            )
+            self._cache_service = CacheService(storage_backend=backend)
+        return self._cache_service
+
+    def _state_key(self, trade_id: str) -> str:
+        return f"{self._prefix}state:{trade_id}"
+
+    def _triggered_key(self, trigger_key: str) -> str:
+        return f"{self._prefix}triggered:{trigger_key}"
+
+    def _expiry_index_key(self) -> str:
+        return f"{self._prefix}_expiry_index"
+
+    async def record_event(
+        self,
+        trade_id: str,
+        source_system: str,
+        payload: dict[str, Any],
+        topic: str,
+        timestamp: datetime,
+        ttl_seconds: int,
+        message_id: str | None = None,
+    ) -> None:
+        cache = self._get_cache_service()
+        now = time.time()
+        expires_at = now + ttl_seconds
+
+        # Get existing state or create new
+        existing = cache.get_data(self._state_key(trade_id))
+        if existing is None:
+            state_data: dict[str, Any] = {
+                "trade_id": trade_id,
+                "events": {},
+                "created_at": now,
+                "expires_at": expires_at,
+            }
+        else:
+            state_data = existing if isinstance(existing, dict) else existing[0]
+            state_data["expires_at"] = expires_at
+
+        state_data["events"][source_system] = {
+            "source_system": source_system,
+            "payload": payload,
+            "topic": topic,
+            "timestamp": timestamp.isoformat(),
+            "message_id": message_id,
+        }
+
+        cache.add_data(
+            key=self._state_key(trade_id),
+            value=state_data,
+            expiry=ttl_seconds,
+        )
+
+        # Update expiry index
+        expiry_index = cache.get_data(self._expiry_index_key())
+        if expiry_index is None:
+            expiry_index = {}
+        elif not isinstance(expiry_index, dict):
+            expiry_index = expiry_index[0] if isinstance(expiry_index, tuple) else {}
+        expiry_index[trade_id] = expires_at
+        cache.add_data(key=self._expiry_index_key(), value=expiry_index)
+
+    async def get_state(self, trade_id: str) -> CorrelationState | None:
+        cache = self._get_cache_service()
+        raw = cache.get_data(self._state_key(trade_id))
+        if raw is None:
+            return None
+
+        state_data = raw if isinstance(raw, dict) else raw[0]
+
+        now = time.time()
+        if now > state_data.get("expires_at", 0):
+            return None
+
+        events: dict[str, EventRecord] = {}
+        for source, event_data in state_data.get("events", {}).items():
+            events[source] = EventRecord(
+                source_system=event_data["source_system"],
+                payload=event_data["payload"],
+                topic=event_data["topic"],
+                timestamp=datetime.fromisoformat(event_data["timestamp"]),
+                message_id=event_data.get("message_id"),
+            )
+
+        return CorrelationState(
+            trade_id=trade_id,
+            events=events,
+            created_at=state_data.get("created_at", now),
+            expires_at=state_data.get("expires_at", 0),
+        )
+
+    async def has_triggered(self, trigger_key: str) -> bool:
+        cache = self._get_cache_service()
+        result = cache.get_data(self._triggered_key(trigger_key))
+        return result is not None
+
+    async def mark_triggered(self, trigger_key: str) -> None:
+        cache = self._get_cache_service()
+        cache.add_data(key=self._triggered_key(trigger_key), value=True)
+
+    async def sweep_expired(self) -> list[str]:
+        cache = self._get_cache_service()
+        expiry_index_raw = cache.get_data(self._expiry_index_key())
+        if expiry_index_raw is None:
+            return []
+
+        expiry_index = (
+            expiry_index_raw
+            if isinstance(expiry_index_raw, dict)
+            else expiry_index_raw[0]
+        )
+        now = time.time()
+        expired: list[str] = []
+
+        for trade_id, expires_at in list(expiry_index.items()):
+            if now > expires_at:
+                expired.append(trade_id)
+                cache.remove_data(self._state_key(trade_id))
+                del expiry_index[trade_id]
+
+        if expired:
+            cache.add_data(key=self._expiry_index_key(), value=expiry_index)
+
+        return expired
+
+    async def delete_state(self, trade_id: str) -> None:
+        cache = self._get_cache_service()
+        cache.remove_data(self._state_key(trade_id))
+
+        expiry_index_raw = cache.get_data(self._expiry_index_key())
+        if expiry_index_raw is not None:
+            expiry_index = (
+                expiry_index_raw
+                if isinstance(expiry_index_raw, dict)
+                else expiry_index_raw[0]
+            )
+            expiry_index.pop(trade_id, None)
+            cache.add_data(key=self._expiry_index_key(), value=expiry_index)
+
+    async def get_all_active_trade_ids(self) -> list[str]:
+        cache = self._get_cache_service()
+        expiry_index_raw = cache.get_data(self._expiry_index_key())
+        if expiry_index_raw is None:
+            return []
+
+        expiry_index = (
+            expiry_index_raw
+            if isinstance(expiry_index_raw, dict)
+            else expiry_index_raw[0]
+        )
+        now = time.time()
+        return [tid for tid, exp in expiry_index.items() if now <= exp]
+
+
 def create_state_store(config: dict[str, Any]) -> StateStore:
     """Factory for creating state store instances from config."""
     store_type = config.get("type", "in_memory")
@@ -301,6 +487,16 @@ def create_state_store(config: dict[str, Any]) -> StateStore:
             url=config.get("url", "redis://localhost:6379"),
             key_prefix=config.get("key_prefix", "correlator:"),
         )
+    if store_type == "database":
+        return DatabaseStateStore(
+            connection_string=config.get(
+                "connection_string", "sqlite:///correlator_state.db"
+            ),
+            key_prefix=config.get("key_prefix", "correlator:"),
+        )
     if store_type == "in_memory":
         return InMemoryStateStore()
-    raise ValueError(f"Unknown state store type: {store_type!r}. Use 'in_memory' or 'redis'.")
+    raise ValueError(
+        f"Unknown state store type: {store_type!r}. "
+        "Use 'in_memory', 'redis', or 'database'."
+    )

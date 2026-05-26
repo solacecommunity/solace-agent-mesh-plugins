@@ -212,3 +212,52 @@ class TestFullPipelineIntegration:
         # Verify idempotency
         await engine.ingest_event("T1", "system_c", {"tradeId": "T1"}, "t", ts)
         assert events_triggered == ["T1"]
+
+    async def test_state_store_database_sqlite(self, tmp_path):
+        """
+        Scenario: Verify that the database state store (SQLite) works end-to-end.
+        Uses SAM's CacheService with SQLAlchemy backend.
+        """
+        try:
+            from solace_ai_connector.services.cache_service import CacheService  # noqa: F401
+        except ImportError:
+            pytest.skip("solace_ai_connector not installed (run within SAM venv)")
+
+        from event_correlator.state_store import DatabaseStateStore
+
+        db_path = tmp_path / "test_correlator.db"
+        store = DatabaseStateStore(
+            connection_string=f"sqlite:///{db_path}",
+            key_prefix="test:",
+        )
+
+        rules = create_trigger_rules([
+            {"type": "all_sources_present", "required_sources": ["system_a", "system_b", "system_c"]},
+        ])
+        events_triggered: list = []
+
+        async def on_trigger(trade_id, rule_name, state):
+            events_triggered.append(trade_id)
+
+        engine = CorrelationEngine(
+            state_store=store,
+            trigger_rules=rules,
+            ttl_seconds=3600,
+            on_trigger=on_trigger,
+        )
+
+        ts = datetime.now(UTC)
+        await engine.ingest_event("T1", "system_a", {"tradeId": "T1"}, "t", ts)
+        await engine.ingest_event("T1", "system_b", {"tradeId": "T1"}, "t", ts)
+        await engine.ingest_event("T1", "system_c", {"tradeId": "T1"}, "t", ts)
+
+        assert events_triggered == ["T1"]
+
+        # Verify idempotency
+        await engine.ingest_event("T1", "system_c", {"tradeId": "T1"}, "t", ts)
+        assert events_triggered == ["T1"]
+
+        # Verify state persists (re-read)
+        state = await store.get_state("T1")
+        assert state is not None
+        assert set(state.events.keys()) == {"system_a", "system_b", "system_c"}

@@ -14,7 +14,7 @@ Use cases include trade reconciliation, multi-system order matching, distributed
 - Two built-in trigger rules (extensible):
   - **All sources present**: fire when every configured source has published for the same key
   - **Immediate on source**: fire immediately when a specific source publishes (e.g., change/amendment events)
-- Pluggable state store (in-memory for dev, Redis for production)
+- Pluggable state store (in-memory, Redis, or PostgreSQL/SQLite via SAM's CacheService)
 - Idempotent trigger evaluation (no double-firing on redelivery)
 - Configurable TTL with expiry actions (drop, alert, trigger with partial data)
 - Output publishing to configurable Solace topics
@@ -74,8 +74,18 @@ pytest
 ruff check src/ tests/
 ```
 
+## State Store Options
+
+| Type | Config | Use Case |
+|------|--------|----------|
+| `in_memory` | `type: "in_memory"` | Development, single instance |
+| `redis` | `type: "redis"`, `url: "redis://..."` | Production, multi-instance |
+| `database` | `type: "database"`, `connection_string: "postgresql://..."` | Production, uses SAM's built-in CacheService (PostgreSQL/SQLite) |
+
+The `database` store uses SAM's `CacheService` with `SQLAlchemyStorage`, sharing the same database infrastructure as SAM's session and task state. No additional dependencies required when running within SAM.
+
 ## Limitations
 
-- ACK-on-receive strategy means events can be lost if the process crashes between ACK and state persistence. Use Redis and durable queues in production.
+- ACK-on-receive strategy means events can be lost if the process crashes between ACK and state persistence. Use `database` or `redis` state store with durable queues in production.
 - Queue creation is out of scope — broker admin must provision durable queues with appropriate topic subscriptions.
 - The correlator does NOT call external APIs or MCP. If the target agent needs additional context, it should fetch that itself.

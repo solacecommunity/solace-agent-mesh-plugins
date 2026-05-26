@@ -44,8 +44,9 @@ class CorrelationConfig(BaseModel):
 
 
 class StateStoreConfig(BaseModel):
-    type: Literal["in_memory", "redis"] = "in_memory"
+    type: Literal["in_memory", "redis", "database"] = "in_memory"
     url: str = "redis://localhost:6379"
+    connection_string: str = "sqlite:///correlator_state.db"
     key_prefix: str = "correlator:"
 
 

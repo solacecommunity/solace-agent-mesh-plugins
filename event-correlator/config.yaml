@@ -73,12 +73,17 @@ apps:
             source: "system_b"
             topic_pattern: "events/system-b-changes/>"
 
-      # State store (in_memory for dev, redis for production)
+      # State store (in_memory for dev; redis or database for production)
       state_store:
         type: "in_memory"
-        # For production Redis:
+        # For production with Redis:
         # type: "redis"
         # url: ${REDIS_URL, redis://localhost:6379}
+        # key_prefix: "correlator:"
+        #
+        # For production with PostgreSQL/SQLite (uses SAM's CacheService):
+        # type: "database"
+        # connection_string: ${DATABASE_URL, sqlite:///correlator_state.db}
         # key_prefix: "correlator:"
 
       # Target agent to invoke when a trigger fires
