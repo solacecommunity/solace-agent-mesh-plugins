@@ -1,0 +1,96 @@
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: logs/event-correlator.log
+
+shared_config:
+  - broker_connection: &broker_connection
+      broker_url: ${SOLACE_BROKER_URL, ws://localhost:8008}
+      broker_username: ${SOLACE_BROKER_USERNAME, default}
+      broker_password: ${SOLACE_BROKER_PASSWORD, default}
+      broker_vpn: ${SOLACE_BROKER_VPN, default}
+      dev_mode: true
+
+apps:
+  - name: event-correlator-app
+    app_module: event_correlator.app
+    broker:
+      <<: *broker_connection
+
+    app_config:
+      gateway_id: ${CORRELATOR_GATEWAY_ID, event-correlator-01}
+      namespace: "${NAMESPACE, SAM/}"
+      artifact_service:
+        type: "filesystem"
+        base_path: "/tmp/sam-correlator-artifacts"
+        artifact_scope: "namespace"
+
+      # Data-plane broker (source system events) — can differ from control plane
+      data_plane_broker_config:
+        broker_url: ${DATA_PLANE_BROKER_URL, ws://localhost:8008}
+        broker_vpn: ${DATA_PLANE_BROKER_VPN, default}
+        broker_username: ${DATA_PLANE_BROKER_USERNAME, default}
+        broker_password: ${DATA_PLANE_BROKER_PASSWORD, default}
+        dev_mode: true
+
+      # Source systems to correlate
+      source_systems:
+        - name: system_a
+          subscriptions:
+            - topic: "events/system-a/>"
+          correlation_key_extraction:
+            method: "json_path"          # or "topic_position"
+            expression: "$.orderId"      # JSON path to the correlation key
+
+        - name: system_b
+          subscriptions:
+            - topic: "events/system-b/>"
+            - topic: "events/system-b-changes/>"
+          correlation_key_extraction:
+            method: "json_path"
+            expression: "$.orderId"
+
+        - name: system_c
+          subscriptions:
+            - topic: "events/system-c/>"
+          correlation_key_extraction:
+            method: "json_path"
+            expression: "$.orderId"
+
+      # Correlation configuration
+      correlation_config:
+        ttl_seconds: 86400                # Time window for correlation (24h)
+        ttl_sweep_interval_ms: 30000      # Check for expired states every 30s
+        ttl_expiry_action: "alert"        # drop | alert | trigger_partial
+
+        trigger_rules:
+          # Rule 1: Fire when all configured sources have published
+          - type: "all_sources_present"
+            required_sources: ["system_a", "system_b", "system_c"]
+
+          # Rule 2: Fire immediately when a specific source publishes on a change topic
+          - type: "immediate_on_source"
+            source: "system_b"
+            topic_pattern: "events/system-b-changes/>"
+
+      # State store (in_memory for dev; redis or database for production)
+      state_store:
+        type: "in_memory"
+        # For production with Redis:
+        # type: "redis"
+        # url: ${REDIS_URL, redis://localhost:6379}
+        # key_prefix: "correlator:"
+        #
+        # For production with PostgreSQL/SQLite (uses SAM's CacheService):
+        # type: "database"
+        # connection_string: ${DATABASE_URL, sqlite:///correlator_state.db}
+        # key_prefix: "correlator:"
+
+      # Target agent to invoke when a trigger fires
+      target_agent_name: ${TARGET_AGENT_NAME, MyReconciliationAgent}
+      default_user_identity: "event-correlator-service"
+
+      # Output topic patterns for publishing results
+      output_config:
+        success_topic_pattern: "correlator/results/{trade_id}"
+        error_topic_pattern: "correlator/errors/{trade_id}"
