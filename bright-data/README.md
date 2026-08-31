@@ -25,6 +25,11 @@ This agent provides the following capabilities:
 - **Website Interaction**: Automate interactions with web pages
 - **Proxy Networks**: Leverage Bright Data's proxy infrastructure for reliable access
 
+## Video 
+[![Watch the video](https://img.youtube.com/vi/FkDqEZ_WvyE/hqdefault.jpg)](https://youtu.be/FkDqEZ_WvyE?si=tnISgkKROm2VG-Cz)
+https://youtu.be/FkDqEZ_WvyE?si=tnISgkKROm2VG-Cz
+
+
 ## Configuration
 
 The plugin requires the following environment variables to be set:

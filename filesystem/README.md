@@ -31,6 +31,11 @@ This agent provides the following capabilities:
 - **Path Validation**: Built-in security to prevent directory traversal and unauthorized access
 - **Multiple Format Support**: Handle text files, JSON, YAML, and other common formats
 
+## Video
+[![Watch the video](https://img.youtube.com/vi/xzGMlPc2QWs/hqdefault.jpg)](https://www.youtube.com/embed/xzGMlPc2QWs)
+https://youtu.be/xzGMlPc2QWs?si=AxzJqNdpXR5N8Eak
+
+
 ## Configuration
 
 The plugin requires the following environment variables to be set:
