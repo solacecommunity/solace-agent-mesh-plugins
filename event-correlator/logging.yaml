@@ -1,0 +1,31 @@
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  structured:
+    format: "%(asctime)s [%(levelname)s] %(name)s - %(message)s"
+    datefmt: "%Y-%m-%dT%H:%M:%S%z"
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: INFO
+    formatter: structured
+    stream: ext://sys.stdout
+
+  file:
+    class: logging.handlers.RotatingFileHandler
+    level: DEBUG
+    formatter: structured
+    filename: logs/bbva-recon-correlator.log
+    maxBytes: 52428800
+    backupCount: 3
+
+root:
+  level: DEBUG
+  handlers: [console, file]
+
+loggers:
+  event_correlator:
+    level: DEBUG
+    propagate: true

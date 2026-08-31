@@ -1,0 +1,60 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.event_correlator.metadata]
+type = "gateway"
+
+[project]
+name = "event_correlator"
+version = "0.1.0"
+description = "SAM Gateway Plugin for multi-source event correlation and conditional agent triggering"
+authors = [{ name = "Solace Community" }]
+license = { text = "Apache-2.0" }
+requires-python = ">=3.11"
+dependencies = [
+    "jsonpath-ng>=1.6.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+redis = ["redis[hiredis]>=5.0.0"]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.23.0",
+    "mypy>=1.8.0",
+    "ruff>=0.2.0",
+    "fakeredis>=2.20.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/event_correlator"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"config.yaml" = "event_correlator/config.yaml"
+"logging.yaml" = "event_correlator/logging.yaml"
+"README.md" = "event_correlator/README.md"
+"pyproject.toml" = "event_correlator/pyproject.toml"
+
+[tool.mypy]
+strict = true
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "A", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
